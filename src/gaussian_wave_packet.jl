@@ -95,6 +95,33 @@ end
 
 
 #=
+    DISPLAY
+=#
+
+# Prints "x" if there is no shift (q is a NullNumber), "(x - q)" otherwise
+_var_str(::NullNumber, var::String) = var
+_var_str(q::Real, var::String) = string("(", var, " - ", q, ")")
+
+# 1D case: printed as an explicit formula in x
+function Base.show(io::IO, G::GaussianWavePacket{1})
+    y = _var_str(first(G.q), "x")
+    print(io, "(", G.λ, ") * exp(-(", G.z[1, 1], ")/2*", y, "^2)")
+    if !(eltype(G.p) <: NullNumber)
+        print(io, " * cis((", first(G.p), ")*x)")
+    end
+end
+
+# D>1 case: a symbolic formula, with z, q, p spelled out below
+# (q and/or p are omitted when they are NullNumber, i.e. not present)
+function Base.show(io::IO, G::GaussianWavePacket{D}) where D
+    print(io, "GaussianWavePacket{", D, "}: (", G.λ, ") * exp(-(x-q)ᵀz(x-q)/2)")
+    eltype(G.p) <: NullNumber || print(io, " * exp(i⋅pᵀx)")
+    print(io, "\n  z = ", G.z)
+    eltype(G.q) <: NullNumber || print(io, "\n  q = ", G.q)
+    eltype(G.p) <: NullNumber || print(io, "\n  p = ", G.p)
+end
+
+#=
     BASIC OPERATIONS
 =#
 
