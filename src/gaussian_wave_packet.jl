@@ -1,30 +1,44 @@
 
 #=
+    A real number, or the statically-known absence of one (see NullNumbers.jl).
+    Used throughout this file for q, p, and (for `Gaussian`) z, so that "this
+    parameter is not present" is resolved at compile time instead of at runtime.
+=#
+const RealOrNull = Union{Real, NullNumber}
+
+#=
+    The type of a covariance matrix z: either a dense D×D symmetric matrix,
+    or (when there is no correlation between dimensions) a cheaper diagonal matrix.
+    Used for both the general complex z of GaussianWavePacket and the real z of Gaussian.
+=#
+const CovMat{D, Tz} = Union{Symmetric{Tz, <:SMatrix{D, D, Tz}}, SDiagonal{D, Tz}}
+
+#=
     Represents the complex gaussian function
         λ*exp(-z(x-q)⋅(x-q)/2)*exp(ip⋅x)
 =#
-struct GaussianWavePacket{D, Tλ<:Number, Tz<:Number, Cz<:Union{Symmetric{Tz, <:SMatrix{D, D, Tz}}, SDiagonal{D, Tz}}, Tq<:Union{Real, NullNumber}, Tp<:Union{Real, NullNumber}} <: AbstractWavePacket{D}
+struct GaussianWavePacket{D, Tλ<:Number, Tz<:Number, Cz<:CovMat{D, Tz}, Tq<:RealOrNull, Tp<:RealOrNull} <: AbstractWavePacket{D}
     λ::Tλ
     z::Cz
     q::SVector{D, Tq}
     p::SVector{D, Tp}
 
-    function GaussianWavePacket(λ::Tλ, z::Union{Symmetric{Tz, <:SMatrix{D, D, Tz}}, SDiagonal{D, Tz}},
+    function GaussianWavePacket(λ::Tλ, z::CovMat{D, Tz},
                 q::SVector{D, Tq}=zeros(SVector{D, NullNumber}),
-                p::SVector{D, Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:Union{Real, NullNumber}, Tp<:Union{Real, NullNumber}}
+                p::SVector{D, Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
         return new{D, Tλ, Tz, typeof(z), Tq, Tp}(λ, z, q, p)
     end
     function GaussianWavePacket{D}(λ::Tλ, z::Symmetric{Tz},
                 q::AbstractVector{Tq}=zeros(SVector{D, NullNumber}),
-                p::AbstractVector{Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:Union{Real, NullNumber}, Tp<:Union{Real, NullNumber}}
+                p::AbstractVector{Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
         return GaussianWavePacket(λ, Symmetric(SMatrix{D, D}(z)), SVector{D}(q), SVector{D}(p))
     end
     function GaussianWavePacket{D}(λ::Tλ, z::Diagonal{Tz},
                 q::AbstractVector{Tq}=zeros(SVector{D, NullNumber}),
-                p::AbstractVector{Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:Union{Real, NullNumber}, Tp<:Union{Real, NullNumber}}
+                p::AbstractVector{Tp}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
         return GaussianWavePacket(λ, Diagonal(SVector{D}(z.diag)), SVector{D}(q), SVector{D}(p))
     end
-    function GaussianWavePacket(λ::Tλ, z::Tz, q::Tq=NullNumber(), p::Tp=NullNumber()) where{Tλ<:Number, Tz<:Number, Tq<:Union{Real, NullNumber}, Tp<:Union{Real, NullNumber}}
+    function GaussianWavePacket(λ::Tλ, z::Tz, q::Tq=NullNumber(), p::Tp=NullNumber()) where{Tλ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
         return GaussianWavePacket(λ, Diagonal(SVector(z)), SVector(q), SVector(p))
     end
 end
@@ -33,18 +47,22 @@ end
     Represents the gaussian function
         λ*exp(-z(x-q)⋅(x-q)/2)
 =#
-const Gaussian{D, Tλ<:Number, Tz<:Union{Real, NullNumber}, Cz<:Union{Symmetric{Tz, <:SMatrix{D, D, Tz}}}, Tq<:Union{Real, NullNumber}} =
+const Gaussian{D, Tλ<:Number, Tz<:RealOrNull, Cz<:CovMat{D, Tz}, Tq<:RealOrNull} =
             GaussianWavePacket{D, Tλ, Tz, Cz, Tq, NullNumber}
-function Gaussian(λ::Tλ, z::Union{Symmetric{Tz, <:SMatrix{D, D, Tz}}, SDiagonal{D, Tz}},
-                q::SVector{D, Tq}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:Number, Tq<:Union{Real, NullNumber}}
+function Gaussian(λ::Tλ, z::CovMat{D, Tz},
+                q::SVector{D, Tq}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:RealOrNull, Tq<:RealOrNull}
     return GaussianWavePacket(λ, z, q)
 end
-function Gaussian{D}(λ::Number, z::AbstractMatrix{Tz},
-                q::AbstractVector{Tq}=zeros(SVector{D, NullNumber})) where{D, Tz<:Number, Tq<:Union{Real, NullNumber}}
+function Gaussian{D}(λ::Tλ, z::Symmetric{Tz},
+                q::AbstractVector{Tq}=zeros(SVector{D, NullNumber})) where{D, Tλ<:Number, Tz<:RealOrNull, Tq<:RealOrNull}
     return GaussianWavePacket{D}(λ, z, q)
 end
-function Gaussian(λ::Number, z::Union{Real, NullNumber},
-                q::Union{Real, NullNumber} = NullNumber())
+function Gaussian{D}(λ::Number, z::Diagonal{Tz},
+                q::AbstractVector{Tq}=zeros(SVector{D, NullNumber})) where{D, Tz<:RealOrNull, Tq<:RealOrNull}
+    return GaussianWavePacket{D}(λ, z, q)
+end
+function Gaussian(λ::Number, z::RealOrNull,
+                q::RealOrNull = NullNumber())
     return Gaussian(λ, Diagonal(SVector(z)), SVector(q))
 end
 
@@ -173,9 +191,9 @@ end
 =#
 
 # Multiplies a gaussian wave packet by exp(-ib/2(x-q)⋅(x-q)) * exp(ipx)
-function unitary_product(G::GaussianWavePacket{D}, b::Union{Symmetric{<:Union{Real, NullNumber}, <:SMatrix{D, D}}, SDiagonal{D, <:Union{Real, NullNumber}}},
-            q::SVector{D, <:Union{Real, NullNumber}} = zeros(SVector{D, NullNumber}),
-            p::SVector{D, <:Union{Real, NullNumber}} = zeros(SVector{D, NullNumber})) where D
+function unitary_product(G::GaussianWavePacket{D}, b::CovMat{D, <:RealOrNull},
+            q::SVector{D, <:RealOrNull} = zeros(SVector{D, NullNumber}),
+            p::SVector{D, <:RealOrNull} = zeros(SVector{D, NullNumber})) where D
     z_ = G.z + im * b
     q_ = G.q
     p_ = G.p + p + b * (q - G.q)
