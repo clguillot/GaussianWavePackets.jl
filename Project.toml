@@ -1,7 +1,7 @@
 name = "HermiteWavePackets"
 uuid = "0c63080c-9546-48d9-913a-8575c4379365"
-authors = ["Clement Guillot <clement.guillot@enpc.fr>"]
 version = "0.1.0"
+authors = ["Clement Guillot <clement.guillot@enpc.fr>"]
 
 [deps]
 Cubature = "667455a9-e2ce-5579-9412-b964f529a492"
