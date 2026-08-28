@@ -53,5 +53,6 @@ end
 # dot_L2(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D = dot_L2(promote(G1, G2)...)
 norm_L2(G::AbstractWavePacket) = sqrt(norm2_L2(G))
 norm_∇(G::AbstractWavePacket) = sqrt(norm2_∇(G))
+norm_∇(G::AbstractWavePacket, c::AbstractVector) = sqrt(norm2_∇(G, c))
 ∫(G::AbstractWavePacket) = integral(G)
 (G::AbstractWavePacket{D})(x::T...) where{D, T<:Number} = G(SVector{D}(x...))

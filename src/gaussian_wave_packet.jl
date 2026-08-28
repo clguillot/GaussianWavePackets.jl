@@ -320,6 +320,12 @@ norm2_L2(G::GaussianWavePacket) = integral(abs2(G))
     end
     return code
 end
+# Computes ∫<(D-c)G1,(D-c)G2> (where <,> is the hermitian product in ℂᴰ, and D=-i∇)
+function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}) where D
+    cs = SVector{D}(c)
+    return dot_∇(GaussianWavePacket(G1.λ, G1.z, G1.q, G1.p - cs),
+                 GaussianWavePacket(G2.λ, G2.z, G2.q, G2.p - cs))
+end
 
 # Computes ∫|∇G|^2
 @generated function norm2_∇(G::GaussianWavePacket{D}) where D
@@ -348,6 +354,11 @@ end
         return I
     end
     return code
+end
+# Computes ∫|(D-c)G|^2
+function norm2_∇(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}) where D
+    cs = SVector{D}(c)
+    return norm2_∇(GaussianWavePacket(G.λ, G.z, G.q, G.p - cs))
 end
 
 # Computes ∫dx 1/|x| G(x) where G is an isotropic 3d gaussian wave packet

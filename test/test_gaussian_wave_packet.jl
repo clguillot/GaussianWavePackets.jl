@@ -343,10 +343,12 @@ function test_gaussian_wave_packet()
             p2 = SVector{D}(4 * (rand(D) .- 0.5))
             G2 = GaussianWavePacket(λ2, z2, q2, p2)
 
+            c = SVector{D}(2 * (rand(D) .- 1))
+
             GF = conj(fourier(G1)) * fourier(G2)
-            F(y) = (2π)^(-D) * sum(abs2, y) * GF(y)
+            F(y) = (2π)^(-D) * sum(abs2, y - c) * GF(y)
             I1 = complex_cubature(F, [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-            alloc += @allocated I2 = dot_∇(G1, G2)
+            alloc += @allocated I2 = dot_∇(G1, G2, c)
             err = max(err, abs(I1 - I2))
         end
 
@@ -367,8 +369,10 @@ function test_gaussian_wave_packet()
             p = SVector{D}(4 * (rand(D) .- 0.5))
             G = GaussianWavePacket(λ, z, q, p)
 
-            alloc += @allocated I = norm_∇(G)
-            err = max(err, abs(norm_∇(G) - sqrt(dot_∇(G, G))))
+            c = SVector{D}(2 * (rand(D) .- 1))
+
+            alloc += @allocated I = norm_∇(G, c)
+            err = max(err, abs(I - sqrt(dot_∇(G, G, c))))
         end
 
         color = (err > tol || alloc != 0) ? :red : :green
