@@ -1,12 +1,5 @@
 
 #=
-    A real number, or the statically-known absence of one (see NullNumbers.jl).
-    Used throughout this file for q, p, and (for `Gaussian`) z, so that "this
-    parameter is not present" is resolved at compile time instead of at runtime.
-=#
-const RealOrNull = Union{Real, NullNumber}
-
-#=
     The type of a covariance matrix z: either a dense D×D symmetric matrix,
     or (when there is no correlation between dimensions) a cheaper diagonal matrix.
     Used for both the general complex z of GaussianWavePacket and the real z of Gaussian.

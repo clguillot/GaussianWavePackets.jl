@@ -42,6 +42,13 @@ export norm_∇
 export core_type
 export coulomb_integral
 
+#=
+    A real number, or the statically-known absence of one (see NullNumbers.jl).
+    Used throughout this file for q, p, and (for `Gaussian`) z, so that "this
+    parameter is not present" is resolved at compile time instead of at runtime.
+=#
+const RealOrNull = Union{Real, NullNumber}
+
 include("utils.jl")
 include("special_cholesky.jl")
 
