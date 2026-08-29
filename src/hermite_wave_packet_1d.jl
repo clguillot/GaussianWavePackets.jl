@@ -81,6 +81,20 @@ function Base.promote_rule(::Type{HermiteWavePacket1D{N1, TΛ1, Tz1, Tq1, Tp1}},
 end
 
 #=
+    DISPLAY
+=#
+
+# Represents ∑ₙ Λ[n]⋅ψₙ(z,q,p,x), with Λ, z, q, p spelled out below
+# (q and/or p are omitted when they are NullNumber, i.e. not present)
+function Base.show(io::IO, H::HermiteWavePacket1D{N}) where N
+    print(io, "HermiteWavePacket1D{", N, "}: ∑ₙ Λ[n]⋅ψₙ(z,q,p,x)")
+    print(io, "\n  Λ = ", H.Λ)
+    print(io, "\n  z = ", H.z)
+    H.q isa NullNumber || print(io, "\n  q = ", H.q)
+    H.p isa NullNumber || print(io, "\n  p = ", H.p)
+end
+
+#=
     BASIC OPERATIONS
 =#
 
