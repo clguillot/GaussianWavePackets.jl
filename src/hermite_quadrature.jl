@@ -83,34 +83,11 @@ end
 
 #
 function hermite_grid(a::Real, q::Union{Real, NullNumber}, ::Val{N}) where N
-    T = fitting_float(typeof(a), typeof(q))  
+    T = fitting_float(typeof(a), typeof(q))
     x0, _, _ = hermite_primitive_discrete_transform(T, Val(N))
     q_broad = @SVector fill(q, N)
     return x0 .* a^Rational(-1,2) .+ q_broad
 end
-@generated function hermite_grid(a::SVector{D, <:Number}, q::SVector{D, <:Union{Real, NullNumber}}, ::Type{N}) where{D, N<:Tuple}
-    if length(N.parameters) != D
-        throw(DimensionMismatch("Expected N to have length $D, but got length $(length(N.parameters))"))
-    end
-    
-    zs = zero(SVector{D, Bool})
-    expr = [:( hermite_grid(a[$k], q[$k], Val($n)) ) for (n, k) in zip(N.parameters, eachindex(zs))]
-    return :( return tuple($(expr...)) )
-end
-
-# 
-@generated function hermite_discrete_transform(Λ::SArray{N}) where{N}
-    T = fitting_float(eltype(Λ))
-    M = tuple((last(hermite_primitive_discrete_transform(T, Val(n))) for n in N.parameters)...)
-    return :( static_tensor_transform(Λ, $M) )
-end
-
-# 
-function hermite_discrete_transform(Λ::SArray{N, TΛ, D}, a::SVector{D, Ta}) where{N, D, TΛ<:Number, Ta<:Number}
-    T = fitting_float(TΛ, Ta)
-    return prod(a)^Rational(-1,4) .* hermite_discrete_transform(Λ)
-end
-
 
 #=
 
@@ -130,20 +107,4 @@ function hermite_quadrature(a::Real, q::Union{Real, NullNumber}, ::Val{N}) where
     c = a^Rational(-1,2)
     q_broad = SVector{N}(ntuple(_ -> q, N)...)
     return c.*x0.+q_broad, c.*w0
-end
-@generated function hermite_quadrature(a::SVector{D, <:Real}, q::SVector{D, <:Union{Real, NullNumber}}, ::Type{N}) where{D, N<:Tuple}
-    if length(N.parameters) != D
-        throw(DimensionMismatch("Expected N to have length $D, but got length $(length(N.parameters))"))
-    end
-    
-    zs = zeros(SVector{D, Bool})
-    expr = [:( hermite_quadrature(a[$k], q[$k], Val($n)) ) for (n, k) in zip(N.parameters, eachindex(zs))]
-    expr_x = [:( first(A[$k]) ) for k in eachindex(zs)]
-    expr_w = [:( last(A[$k]) ) for k in eachindex(zs)]
-    code =
-        quote
-            A = tuple($(expr...))
-            return tuple($(expr_x...)), tuple($(expr_w...))
-        end
-    return code
 end

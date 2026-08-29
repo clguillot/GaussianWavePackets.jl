@@ -14,8 +14,8 @@ export AbstractWavePacket
 # Concrete types
 export Gaussian
 export GaussianWavePacket
-export HermiteFct
-export HermiteWavePacket
+export HermiteFct1D
+export HermiteWavePacket1D
 export WavePacketSum
 
 # Functions
@@ -57,7 +57,7 @@ include("hermite_quadrature.jl")
 include("generics.jl")
 
 include("gaussian_wave_packet.jl")
-include("hermite_wave_packet.jl")
+include("hermite_wave_packet_1d.jl")
 
 include("wave_packet_sum.jl")
 
