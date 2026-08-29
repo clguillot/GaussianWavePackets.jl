@@ -118,9 +118,15 @@ end
     BASIC OPERATIONS
 =#
 
+# A non-degenerate covariance (z = identity), used by Base.zero below.
+# zero(Cz) is not used instead because it is either undefined (Cz<:Symmetric) or,
+# being a degenerate (singular) covariance, breaks fourier/integral with NaNs.
+_id_cov(::Type{<:Diagonal{Tz}}, ::Val{D}) where{Tz, D} = Diagonal(ones(SVector{D, Tz}))
+_id_cov(::Type{<:Symmetric{Tz}}, ::Val{D}) where{Tz, D} = Symmetric(SMatrix{D, D, Tz}(I))
+
 # Returns a null gaussian
 function Base.zero(::Type{GaussianWavePacket{D, Tλ, Tz, Cz, Tq, Tp}}) where{D, Tλ, Tz, Cz, Tq, Tp}
-    return GaussianWavePacket(zero(Tλ), zero(Cz), zeros(SVector{D, Tq}), zeros(SVector{D, Tp}))
+    return GaussianWavePacket(zero(Tλ), _id_cov(Cz, Val(D)), zeros(SVector{D, Tq}), zeros(SVector{D, Tp}))
 end
 
 # Creates a copy of a gaussian
