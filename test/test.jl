@@ -1,5 +1,7 @@
 using HermiteWavePackets
 
+using Test
+using Random
 using LinearAlgebra
 using FastGaussQuadrature
 using SpecialFunctions

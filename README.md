@@ -180,7 +180,7 @@ Mixed operations between a `GaussianWavePacket{1}` and a `HermiteWavePacket1D` a
 pkg> test HermiteWavePackets
 ```
 
-The tests compare each operation with a direct computation (point values, or numerical cubature with [Cubature.jl](https://github.com/JuliaMath/Cubature.jl), which is only needed for testing) and print the observed error and the number of bytes allocated, in green when below the tolerance. They are scripts at the moment, and are planned to be converted to `Test.jl`.
+The tests (written with `Test.jl`) compare each operation with a direct computation (point values, or numerical cubature with [Cubature.jl](https://github.com/JuliaMath/Cubature.jl), which is only needed for testing), and check that the operations do not allocate. They use random data, with a fixed seed in `test/runtests.jl` for reproducibility; the tests can also be run with other draws by calling the functions of `test/test.jl` directly (e.g. `include("test/test.jl"); test_gaussian()`, in an environment with the test dependencies).
 
 ## Package layout
 

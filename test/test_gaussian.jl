@@ -1,232 +1,230 @@
 
 function test_gaussian()
+    @testset "Gaussian" begin
+        nb_reps = 1
+        M = 10.0
+        tol = 1e-6
+        int_tol = 1e-9
 
-    printstyled("Testing gaussian:\n"; bold=true, color=:blue)
+        @testset "evaluate" begin
+            D = 3
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                x = SVector{D}(4.0 .* (rand(D) .- 0.5))
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
 
-    nb_reps = 1
-    M = 10.0
-    tol = 1e-6
-    int_tol = 1e-9
-
-    let
-        D = 3
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            x = SVector{D}(4.0 .* (rand(D) .- 0.5))
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
-
-            u = @. exp(-z/2 * (x - q)^2)
-            μ = λ * prod(u)
-            alloc += @allocated err = max(err, abs(G(x) - μ) / abs(μ))
-        end
-
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error evaluate = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
-
-    let
-        D = 3
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            x = SVector{D}(4.0 .* (rand(D) .- 0.5))
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
-
-            alloc += @allocated Gc = conj(G)
-
-            err = max(err, abs(Gc(x) - conj(G(x))) / abs(Gc(x)))
-        end
-
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error conjugate = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
-
-    let
-        D = 3
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ1 = rand() + 1im * rand()
-            z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q1 = SVector{D}(4 * (rand(D) .- 0.5))
-            G1 = Gaussian(λ1, z1, q1)
-
-            λ2 = rand() + 1im * rand()
-            z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q2 = SVector{D}(4 * (rand(D) .- 0.5))
-            G2 = Gaussian(λ2, z2, q2)
-
-            f(x) = G1(x) * G2(x)
-            alloc += @allocated G = G1 * G2
-
-            for _=1:100
-                x = SVector{D}(5 * (rand(D) .- 0.5))
-                err = max(err, abs(f(x) - G(x)) / abs(f(x)))
+                u = @. exp(-z/2 * (x - q)^2)
+                μ = λ * prod(u)
+                alloc += @allocated err = max(err, abs(G(x) - μ) / abs(μ))
             end
+
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error product = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "conjugate" begin
+            D = 3
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                x = SVector{D}(4.0 .* (rand(D) .- 0.5))
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
 
-    let
-        D = 2
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
+                alloc += @allocated Gc = conj(G)
 
-            I = complex_cubature(y -> G(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-            alloc += @allocated err = max(err, abs(I - integral(G)))
+                err = max(err, abs(Gc(x) - conj(G(x))) / abs(Gc(x)))
+            end
+
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error integral = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "product" begin
+            D = 3
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ1 = rand() + 1im * rand()
+                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q1 = SVector{D}(4 * (rand(D) .- 0.5))
+                G1 = Gaussian(λ1, z1, q1)
 
-    let
-        D = 2
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ1 = rand() + 1im * rand()
-            z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q1 = SVector{D}(4 * (rand(D) .- 0.5))
-            G1 = Gaussian(λ1, z1, q1)
+                λ2 = rand() + 1im * rand()
+                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q2 = SVector{D}(4 * (rand(D) .- 0.5))
+                G2 = Gaussian(λ2, z2, q2)
 
-            λ2 = rand() + 1im * rand()
-            z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q2 = SVector{D}(4 * (rand(D) .- 0.5))
-            G2 = Gaussian(λ2, z2, q2)
+                f(x) = G1(x) * G2(x)
+                alloc += @allocated G = G1 * G2
 
-            alloc += @allocated G = convolution(G1, G2)
+                for _=1:100
+                    x = SVector{D}(5 * (rand(D) .- 0.5))
+                    err = max(err, abs(f(x) - G(x)) / abs(f(x)))
+                end
+            end
 
-            x0 = 5.0 * (rand(D) .- 0.5)
-            I = complex_cubature(y -> G1(y) * G2(x0 - y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-            err = max(err, abs(I - G(x0)))
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error convolution = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "integral" begin
+            D = 2
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
 
-    let
-        D = 2
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ1 = rand() + 1im * rand()
-            z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q1 = SVector{D}(4 * (rand(D) .- 0.5))
-            G1 = Gaussian(λ1, z1, q1)
+                I = complex_cubature(y -> G(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
+                alloc += @allocated err = max(err, abs(I - integral(G)))
+            end
 
-            λ2 = rand() + 1im * rand()
-            z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q2 = SVector{D}(4 * (rand(D) .- 0.5))
-            G2 = Gaussian(λ2, z2, q2)
-
-            I = complex_cubature(y -> conj(G1(y)) * G2(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-            alloc += @allocated err = max(err, abs(I - dot_L2(G1, G2)))
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error dot L² = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "convolution" begin
+            D = 2
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ1 = rand() + 1im * rand()
+                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q1 = SVector{D}(4 * (rand(D) .- 0.5))
+                G1 = Gaussian(λ1, z1, q1)
 
-    let
-        D = 3
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
+                λ2 = rand() + 1im * rand()
+                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q2 = SVector{D}(4 * (rand(D) .- 0.5))
+                G2 = Gaussian(λ2, z2, q2)
 
-            alloc += @allocated err = max(err, abs(norm_L2(G) - sqrt(dot_L2(G, G))) / norm_L2(G))
+                alloc += @allocated G = convolution(G1, G2)
+
+                x0 = 5.0 * (rand(D) .- 0.5)
+                I = complex_cubature(y -> G1(y) * G2(x0 - y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
+                err = max(err, abs(I - G(x0)))
+            end
+
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error norm L² = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "dot L²" begin
+            D = 2
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ1 = rand() + 1im * rand()
+                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q1 = SVector{D}(4 * (rand(D) .- 0.5))
+                G1 = Gaussian(λ1, z1, q1)
 
-    let
-        D = 2
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            ξ = 5 * (rand(D) .- 0.5)
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
+                λ2 = rand() + 1im * rand()
+                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q2 = SVector{D}(4 * (rand(D) .- 0.5))
+                G2 = Gaussian(λ2, z2, q2)
 
-            alloc += @allocated Gf = fourier(G)
+                I = complex_cubature(y -> conj(G1(y)) * G2(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
+                alloc += @allocated err = max(err, abs(I - dot_L2(G1, G2)))
+            end
 
-            I = complex_cubature(y -> G(y) * cis(-dot(ξ, y)), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-            err = max(err, abs(I - Gf(ξ)))
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error Fourier = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "norm L²" begin
+            D = 3
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
 
-    let
-        D = 3
-        err = 0.0
-        alloc = 0
-        for _=1:nb_reps
-            λ = rand() + 1im * rand()
-            z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-            q = SVector{D}(4 * (rand(D) .- 0.5))
-            G = Gaussian(λ, z, q)
-            GF = fourier(G)
+                alloc += @allocated err = max(err, abs(norm_L2(G) - sqrt(dot_L2(G, G))) / norm_L2(G))
+            end
 
-            alloc += @allocated G_ = inv_fourier(GF)
+            @test err <= tol
+            @test alloc == 0
+        end
 
-            for _=1:100
+        @testset "Fourier" begin
+            D = 2
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
                 ξ = 5 * (rand(D) .- 0.5)
-                err = max(err, abs(G(ξ) - G_(ξ)))
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
+
+                alloc += @allocated Gf = fourier(G)
+
+                I = complex_cubature(y -> G(y) * cis(-dot(ξ, y)), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
+                err = max(err, abs(I - Gf(ξ)))
             end
+
+            @test err <= tol
+            @test alloc == 0
         end
 
-        color = (err > tol || alloc > 0) ? :red : :green
-        printstyled("Error Inverse Fourier = $err ($alloc bytes allocated)\n"; bold=true, color=color)
-    end
+        @testset "Inverse Fourier" begin
+            D = 3
+            err = 0.0
+            alloc = 0
+            for _=1:nb_reps
+                λ = rand() + 1im * rand()
+                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
+                q = SVector{D}(4 * (rand(D) .- 0.5))
+                G = Gaussian(λ, z, q)
+                GF = fourier(G)
 
-    let
-        D = 3
+                alloc += @allocated G_ = inv_fourier(GF)
 
-        λ1 = rand(Float32)
-        z1 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-        q1 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-        G1 = Gaussian(λ1, z1, q1)
+                for _=1:100
+                    ξ = 5 * (rand(D) .- 0.5)
+                    err = max(err, abs(G(ξ) - G_(ξ)))
+                end
+            end
 
-        λ2 = rand(Float32)
-        z2 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-        q2 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-        G2 = Gaussian(λ2, z2, q2)
+            @test err <= tol
+            @test alloc == 0
+        end
 
-        λ3 = rand(Float32)
-        z3 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-        q3 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-        G3 = Gaussian(λ3, z3, q3)
+        @testset "type stability (Float32)" begin
+            D = 3
 
-        G = convolution(G1 * G2, G3)
-        res = G(rand(Float32, D)) + integral(G) + norm_L2(G)
-        T_type = typeof(res)
+            λ1 = rand(Float32)
+            z1 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
+            q1 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
+            G1 = Gaussian(λ1, z1, q1)
 
-        color = (T_type != Float32) ? :red : :green
-        printstyled("Expecting $Float32 and got $T_type\n"; bold=true, color=color)
+            λ2 = rand(Float32)
+            z2 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
+            q2 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
+            G2 = Gaussian(λ2, z2, q2)
+
+            λ3 = rand(Float32)
+            z3 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
+            q3 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
+            G3 = Gaussian(λ3, z3, q3)
+
+            G = convolution(G1 * G2, G3)
+            res = G(rand(Float32, D)) + integral(G) + norm_L2(G)
+            T_type = typeof(res)
+
+            @test T_type == Float32
+        end
     end
 end
