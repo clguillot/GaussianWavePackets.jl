@@ -38,3 +38,4 @@ end
 include("test_gaussian.jl")
 include("test_gaussian_wave_packet.jl");
 include("test_hermite_wave_packet_1d.jl");
+include("test_wave_packet_sum.jl");

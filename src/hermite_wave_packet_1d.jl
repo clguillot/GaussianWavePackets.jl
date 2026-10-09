@@ -149,6 +149,10 @@ function evaluate_grid(H::HermiteWavePacket1D, x::SVector{M, <:Number}) where M
 end
 # Evaluates a hermite wave packet at x
 (H::HermiteWavePacket1D)(x::Number) = evaluate(H, x)
+# Evaluates a hermite wave packet at x, given as a vector of length 1
+# (same convention as GaussianWavePacket{1}, which allows to mix them in a WavePacketSum)
+evaluate(H::HermiteWavePacket1D, x::AbstractVector{<:Number}) = evaluate(H, first(SVector{1}(x)))
+(H::HermiteWavePacket1D)(x::AbstractVector{<:Number}) = evaluate(H, x)
 
 #=
     TRANSFORMATIONS
