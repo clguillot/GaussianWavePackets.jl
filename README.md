@@ -18,7 +18,7 @@ where $\lambda\in\mathbb C$, $z$ is a complex symmetric matrix with positive def
 The package is not registered. From the Julia package manager:
 
 ```julia
-pkg> add https://github.com/clguillot/HermiteWavePackets.git
+]add GaussianWavePackets
 ```
 
 It requires Julia 1.11 or later.
@@ -103,7 +103,7 @@ The number of coefficients `N` is part of the type: products and convolutions gr
 
 ```julia
 S = G + H                              # a WavePacketSum (here a Tuple of two terms)
-S(0.3) ≈ G(0.3) + H(0.3)
+S(0.3) = G(0.3) + H(0.3)
 norm_L2(S)
 convolution(S, G)                      # sum of convolutions
 
@@ -154,43 +154,9 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 
 ¹ Provided that all the terms support it.
 
-Mixed operations between a `GaussianWavePacket{1}` and a `HermiteWavePacket1D` are available for `*`, `polynomial_product`, `convolution` and `dot_L2`; the result of a product or a convolution is a `HermiteWavePacket1D`.
-
-`hermite_grid`, `hermite_quadrature` and `hermite_discrete_transform` (Gauss–Hermite nodes and weights, and the transform from values at the nodes to Hermite coefficients) are also exported, as they are the building blocks of the Hermite products.
-
 ## Design notes
 
 * **No allocations.** Parameters are stored in `StaticArrays` (`SVector`, `SMatrix`), and the operations on a single wave packet do not allocate (the tests check it). Evaluate with an `SVector` rather than a `Vector` to keep this property. Sums stored in a `Vector` necessarily allocate when they are transformed.
-* **Absent parameters are free.** A missing shift or momentum is not stored as `0.0`: it is of type `NullNumber` (from [NullNumbers.jl](https://github.com/clguillot/NullNumbers.jl)), whose arithmetic is resolved at compile time. A `Gaussian` or a `HermiteFct1D` is simply the same type with a `NullNumber` momentum, so the same code handles the real and complex cases at no extra cost.
 * **Complex variance.** The real part of `z` gives the Gaussian envelope and the Hermite scale; its imaginary part is treated as a (chirp) phase, so that the $\psi_n$ stay orthonormal.
 * **Exactness.** Hermite products and $L^2$ products are computed exactly (up to rounding) with Gauss–Hermite quadrature rules sized for the polynomial degrees involved. The transform matrices are computed once, in extended precision, for each floating-point type and each size `N`, at compile time: the first use of a new `N` is therefore slower than the following ones.
 * **Floating-point types.** `Float32` and `Float64` (and the complex counterparts) are supported and preserved by the operations.
-
-## Limitations
-
-* This is version 0.1: the API may still change.
-* `HermiteWavePacket1D` only exists in dimension 1. It has no gradient inner products (`dot_∇`, `norm2_∇`), `abs`/`abs2`, or partial integrals yet.
-* The real part of `z` must be positive definite (a `PosDefException` is thrown otherwise).
-* `unitary_product` takes a matrix `b` and vectors `q`, `p` for Gaussians, but scalars for Hermite wave packets; a `WavePacketSum` mixing both kinds therefore cannot forward a single set of arguments to all its terms.
-* `coulomb_integral` is only available for isotropic three-dimensional packets (`Diagonal` covariance with equal entries).
-
-## Running the tests
-
-```julia
-pkg> test HermiteWavePackets
-```
-
-The tests (written with `Test.jl`) compare each operation with a direct computation (point values, or numerical cubature with [Cubature.jl](https://github.com/JuliaMath/Cubature.jl), which is only needed for testing), and check that the operations do not allocate. They use random data, with a fixed seed in `test/runtests.jl` for reproducibility; the tests can also be run with other draws by calling the functions of `test/test.jl` directly (e.g. `include("test/test.jl"); test_gaussian()`, in an environment with the test dependencies).
-
-## Package layout
-
-| File | Content |
-|---|---|
-| `src/gaussian_wave_packet.jl` | `GaussianWavePacket` and `Gaussian`, with all their operations |
-| `src/hermite_wave_packet_1d.jl` | `HermiteWavePacket1D` and `HermiteFct1D`, and the interface with Gaussians |
-| `src/wave_packet_sum.jl` | `WavePacketSum` |
-| `src/generics.jl` | functions shared by all the wave packets |
-| `src/hermite_quadrature.jl` | Gauss–Hermite nodes, weights and discrete Hermite transform |
-| `src/gaussian_arg.jl` | parameter updates of Gaussians under product, Fourier transform and convolution |
-| `src/utils.jl` | Clenshaw and Horner algorithms |
-| `src/special_cholesky.jl` | Cholesky decomposition of complex symmetric matrices (adapted from StaticArrays.jl, MIT license) |
