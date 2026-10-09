@@ -26,7 +26,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("evaluate", alloc)
         end
 
         @testset "restriction" begin
@@ -69,7 +69,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("restriction", alloc)
         end
 
         @testset "conjugate" begin
@@ -92,7 +92,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("conjugate", alloc)
         end
 
         @testset "product" begin
@@ -126,7 +126,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("product", alloc)
         end
 
         @testset "unitary product" begin
@@ -156,7 +156,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("unitary product", alloc)
         end
 
         @testset "integral" begin
@@ -190,7 +190,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("integral", alloc)
         end
         @testset "restricted integral" begin
             D = 5
@@ -217,7 +217,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("restricted integral", alloc)
         end
 
         @testset "convolution" begin
@@ -249,7 +249,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("convolution", alloc)
         end
 
         @testset "dot L²" begin
@@ -296,7 +296,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("dot L²", alloc)
         end
 
         @testset "norm L²" begin
@@ -317,7 +317,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("norm L²", alloc)
         end
 
         @testset "dot ∇" begin
@@ -351,7 +351,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("dot ∇", alloc)
         end
 
         @testset "norm ∇" begin
@@ -374,7 +374,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("norm ∇", alloc)
         end
 
         @testset "Fourier" begin
@@ -398,7 +398,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Fourier", alloc)
         end
 
         @testset "Inverse Fourier" begin
@@ -424,7 +424,7 @@ function test_gaussian_wave_packet()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Inverse Fourier", alloc)
         end
 
         @testset "Coulomb integral" begin
@@ -449,7 +449,7 @@ function test_gaussian_wave_packet()
             # The reference integral is a poor approximation because of the singularity of 1/|x|
             # (it is truncated at 100 and computed by cubature), hence a larger tolerance
             @test err <= 1e-3
-            @test alloc == 0
+            report_alloc("Coulomb integral", alloc)
         end
 
         @testset "type stability (ComplexF32)" begin

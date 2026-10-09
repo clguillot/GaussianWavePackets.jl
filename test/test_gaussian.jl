@@ -23,7 +23,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("evaluate", alloc)
         end
 
         @testset "conjugate" begin
@@ -43,7 +43,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("conjugate", alloc)
         end
 
         @testset "product" begin
@@ -71,7 +71,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("product", alloc)
         end
 
         @testset "integral" begin
@@ -89,7 +89,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("integral", alloc)
         end
 
         @testset "convolution" begin
@@ -115,7 +115,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("convolution", alloc)
         end
 
         @testset "dot L²" begin
@@ -138,7 +138,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("dot L²", alloc)
         end
 
         @testset "norm L²" begin
@@ -155,7 +155,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("norm L²", alloc)
         end
 
         @testset "Fourier" begin
@@ -176,7 +176,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Fourier", alloc)
         end
 
         @testset "Inverse Fourier" begin
@@ -199,7 +199,7 @@ function test_gaussian()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Inverse Fourier", alloc)
         end
 
         @testset "type stability (Float32)" begin

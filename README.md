@@ -158,7 +158,6 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 
 ## Design notes
 
-* **No allocations.** Parameters are stored in `StaticArrays` (`SVector`, `SMatrix`), and the operations on a single wave packet do not allocate (the tests check it). Evaluate with an `SVector` rather than a `Vector` to keep this property. Sums stored in a `Vector` necessarily allocate when they are transformed.
 * **Complex variance.** The real part of `z` gives the Gaussian envelope and the Hermite scale; its imaginary part is treated as a (chirp) phase, so that the $\psi_n$ stay orthonormal.
 * **Exactness.** Hermite products and $L^2$ products are computed exactly (up to rounding) with Gauss–Hermite quadrature rules sized for the polynomial degrees involved. The transform matrices are computed once, in extended precision, for each floating-point type and each size `N`, at compile time: the first use of a new `N` is therefore slower than the following ones.
 * **Floating-point types.** `Float32` and `Float64` (and the complex counterparts) are supported and preserved by the operations.

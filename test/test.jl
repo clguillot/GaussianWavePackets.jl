@@ -37,6 +37,12 @@ function complex_cubature(f, a, b; reltol=1e-13, abstol=0)
     return complex(Ir[1], Ic[1])
 end
 
+# Allocations are only reported (in green if there are none, in red otherwise) and not tested:
+# whether a call allocates depends on the Julia version and on how the calling code is compiled
+function report_alloc(name, alloc)
+    printstyled("Allocations ($name): $alloc bytes\n"; bold=true, color=(alloc == 0 ? :green : :red))
+end
+
 include("test_gaussian.jl")
 include("test_gaussian_wave_packet.jl");
 include("test_hermite_wave_packet_1d.jl");

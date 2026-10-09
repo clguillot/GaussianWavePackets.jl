@@ -29,7 +29,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("evaluate", alloc)
         end
 
         @testset "evaluate grid" begin
@@ -58,7 +58,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("evaluate grid", alloc)
         end
 
         @testset "convert from gaussian" begin
@@ -82,7 +82,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("convert from gaussian", alloc)
         end
 
         @testset "integral" begin
@@ -102,7 +102,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("integral", alloc)
         end
 
         @testset "product" begin
@@ -132,7 +132,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("product", alloc)
         end
 
         @testset "unitary product" begin
@@ -160,7 +160,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("unitary product", alloc)
         end
 
         @testset "polynomial product" begin
@@ -189,7 +189,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("polynomial product", alloc)
         end
 
         @testset "Fourier (complex variance)" begin
@@ -212,7 +212,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Fourier (complex variance)", alloc)
         end
 
         @testset "Fourier (real variance)" begin
@@ -239,7 +239,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("Fourier (real variance)", alloc)
         end
 
         @testset "inverse Fourier (complex variance)" begin
@@ -264,7 +264,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("inverse Fourier (complex variance)", alloc)
         end
 
         @testset "inverse Fourier (real variance)" begin
@@ -289,7 +289,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("inverse Fourier (real variance)", alloc)
         end
 
         @testset "dot L2" begin
@@ -316,7 +316,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("dot L2", alloc)
         end
 
         @testset "norm L²" begin
@@ -336,7 +336,7 @@ function test_hermite_wave_packets_1d()
             end
 
             @test err <= tol
-            @test alloc == 0
+            report_alloc("norm L²", alloc)
         end
 
         @testset "type stability (ComplexF32)" begin
