@@ -135,8 +135,6 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 | Function | Description | Gaussian | Hermite 1D | Sum |
 |---|---|:-:|:-:|:-:|
 | `G(x)`, `evaluate(G, x)` | evaluation | ✓ | ✓ | ✓ |
-| `evaluate_grid(H, x)` | evaluation at all the points of an `SVector` | | ✓ | |
-| `evaluate(G, x, Tuple{i,…})` | freezes the listed variables, returns a wave packet in the others | ✓ | | |
 | `conj`, `-G`, `w*G`, `G/w` | conjugate, opposite, scalar multiplication and division | ✓ | ✓ | ✓ |
 | `G1 * G2` | pointwise product | ✓ | ✓ | ✓ |
 | `unitary_product` | product with a Gaussian phase | ✓ | ✓ | ✓ |
