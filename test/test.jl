@@ -1,4 +1,4 @@
-using HermiteWavePackets
+using GaussianWavePackets
 
 using Test
 using Random

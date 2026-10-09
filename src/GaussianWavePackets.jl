@@ -1,4 +1,4 @@
-module HermiteWavePackets
+module GaussianWavePackets
 
 using LinearAlgebra
 using StaticArrays
