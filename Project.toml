@@ -4,7 +4,6 @@ version = "0.1.0"
 authors = ["Clement Guillot <clement.guillot@enpc.fr>"]
 
 [deps]
-Cubature = "667455a9-e2ce-5579-9412-b964f529a492"
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
 IrrationalConstants = "92d709cd-6900-40b7-9082-c6be49f344b6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -22,3 +21,9 @@ NullNumbers = "0.1.0"
 SpecialFunctions = "2.4.0"
 StaticArrays = "1.9.8"
 Unroll = "0.1.0"
+
+[extras]
+Cubature = "667455a9-e2ce-5579-9412-b964f529a492"
+
+[targets]
+test = ["Cubature"]
