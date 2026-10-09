@@ -13,6 +13,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
 [compat]
+julia = "1.11"
 Cubature = "1.5.1"
 FastGaussQuadrature = "1.0.2"
 IrrationalConstants = "0.2.4"

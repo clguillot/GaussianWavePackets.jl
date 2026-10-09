@@ -1,5 +1,9 @@
 # GaussianWavePackets.jl
 
+[![Build Status](https://github.com/clguillot/GaussianWavePackets.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/clguillot/GaussianWavePackets.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/clguillot/GaussianWavePackets.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/clguillot/GaussianWavePackets.jl)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **GaussianWavePackets.jl** is a Julia package for exact, allocation-free computations with **Gaussian wave packets** and **Hermite wave packets**: products, Fourier transforms, convolutions, integrals, $L^2$ and $\dot H^1$ inner products, etc. are computed exactly (up to rounding) from the parameters of the functions, with closed formulas for Gaussians and exact Gauss–Hermite quadrature for Hermite products, rather than by approximation on a grid.
 
 Such computations appear in quantum chemistry and quantum dynamics (Gaussian basis sets, Gaussian wave packet propagation), signal processing and mathematical analysis.
