@@ -69,18 +69,23 @@ function _test_hwp_conversions_and_truncation(nb_reps, tol, tol_cub)
             end
             alloc += alloc_of(HermiteWavePacket1D, G) + alloc_of(truncate_to_gaussian, H)
         end
+        # z cannot be a NullNumber
+        @test_throws ArgumentError HermiteWavePacket1D(SVector(1.0, 2.0), NullNumber())
+        @test_throws ArgumentError HermiteWavePacket1D(1.0, NullNumber(), 0.1, 0.2)
         Hg = HermiteFct1D(Gaussian(2.0, 1.5, 0.3))
         @test Hg isa HermiteFct1D && Hg(0.2) ≈ Gaussian(2.0, 1.5, 0.3)(0.2)
         # truncate
         for H in hermite_combos(5)
-            H3 = truncate(H, Val(3))
+            H3 = truncate_hermite(H, Val(3))
             @test H3 isa HermiteWavePacket1D{3} && H3.Λ == H.Λ[SVector(1, 2, 3)]
-            @test truncate(H, Val(5)).Λ == H.Λ
-            H7 = truncate(H, Val(7))
+            @test truncate_hermite(H, Val(5)).Λ == H.Λ
+            H7 = truncate_hermite(H, Val(7))
             @test H7.Λ == [H.Λ; 0; 0] && (H7.z, H7.q, H7.p) === (H.z, H.q, H.p)
             @test norm2_L2(H) - norm2_L2(H3) ≈ sum(abs2, H.Λ[SVector(4, 5)])
-            @test truncate(H, Val(1))(0.3) ≈ truncate_to_gaussian(H)(0.3)
-            alloc += alloc_of(truncate, H, Val(3))
+            @test truncate_hermite(H, Val(1))(0.3) ≈ truncate_to_gaussian(H)(0.3)
+            # truncate_hermite is not a method of Base.truncate
+            @test !hasmethod(Base.truncate, Tuple{typeof(H), Val{3}})
+            alloc += alloc_of(truncate_hermite, H, Val(3))
         end
 
         @test err <= tol

@@ -34,7 +34,7 @@ fourier
 inv_fourier
 convolution
 truncate_to_gaussian
-Base.truncate(::HermiteWavePacket1D, ::Val)
+truncate_hermite
 ```
 
 ## Inner products and norms

@@ -32,11 +32,12 @@ where `Λ` is an `SVector` of `N` coefficients, `z = a + ib` is a complex number
     ψₙ(z, q, p, x) = (a/π)^(1/4) / sqrt(2ⁿn!) Hₙ(√a(x-q)) exp(-z(x-q)²/2) exp(ipx)
 
 (`Hₙ` being the physicists' Hermite polynomials), so that the ψₙ are orthonormal in L².
-A single number `λ` can be given instead of `Λ` (then `N = 1`).
+A single number `λ` can be given instead of `Λ` (then `N = 1`). `z` cannot be a `NullNumber`
+(an `ArgumentError` is thrown).
 `q` and `p` are optional (they are then stored as `NullNumber`s, statically known to be zero).
 
 The number of coefficients `N` is part of the type: products and convolutions grow it
-(`N₁ + N₂ - 1`), and it is never reduced automatically (see `truncate(H, Val(K))`).
+(`N₁ + N₂ - 1`), and it is never reduced automatically (see `truncate_hermite(H, Val(K))`).
 
 See also [`HermiteFct1D`](@ref), [`GaussianWavePacket`](@ref).
 """
@@ -47,6 +48,9 @@ struct HermiteWavePacket1D{N, TΛ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealO
     p::Tp
 
     function HermiteWavePacket1D(Λ::SVector{N, TΛ}, z::Tz, q::Tq=NullNumber(), p::Tp=NullNumber()) where{N, TΛ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
+        # The hermite functions need Re(z) > 0: z cannot be a NullNumber
+        # (this only depends on the type of z, so the check is removed at compile time otherwise)
+        Tz <: NullNumber && throw(ArgumentError("z cannot be a NullNumber for a HermiteWavePacket1D (the hermite functions need Re(z) > 0)"))
         return new{N, TΛ, Tz, Tq, Tp}(Λ, z, q, p)
     end
     function HermiteWavePacket1D(λ::TΛ, z::Tz, q::Tq=NullNumber(), p::Tp=NullNumber()) where{TΛ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull}
@@ -94,7 +98,7 @@ function truncate_to_gaussian(H::HermiteWavePacket1D)
 end
 
 """
-    truncate(H::HermiteWavePacket1D, Val(K))
+    truncate_hermite(H::HermiteWavePacket1D, Val(K))
 
 Returns the Hermite wave packet made of the first `K` coefficients of `H` (the components on
 ψ₀, ..., ψ_{K-1}), with the same `z`, `q` and `p`. If `K` is larger than the number of
@@ -104,7 +108,7 @@ Since products and convolutions increase the number of coefficients, this can be
 it bounded. It is never done automatically: the error made is the L² norm of the coefficients
 which are removed.
 """
-function Base.truncate(H::HermiteWavePacket1D{N, TΛ}, ::Val{K}) where{N, TΛ, K}
+function truncate_hermite(H::HermiteWavePacket1D{N, TΛ}, ::Val{K}) where{N, TΛ, K}
     (K isa Integer && K >= 0) || throw(ArgumentError("The number of coefficients K must be a nonnegative integer"))
     Λ = SVector{K, TΛ}(ntuple(n -> n <= N ? H.Λ[n] : zero(TΛ), Val(K)))
     return HermiteWavePacket1D(Λ, H.z, H.q, H.p)

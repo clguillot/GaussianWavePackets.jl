@@ -99,7 +99,7 @@ truncate_to_gaussian(H)                     # keeps the ψ₀ component, as a Ga
 HermiteWavePacket1D(G)                      # exact conversion of a 1D Gaussian
 ```
 
-The number of coefficients `N` is part of the type: products and convolutions grow it (`N₁ + N₂ - 1`), Fourier transforms preserve it. It is never reduced automatically: `truncate(H, Val(K))` keeps the first `K` coefficients (the L² error is the norm of the coefficients which are removed).
+The number of coefficients `N` is part of the type: products and convolutions grow it (`N₁ + N₂ - 1`), Fourier transforms preserve it. It is never reduced automatically: `truncate_hermite(H, Val(K))` keeps the first `K` coefficients (the L² error is the norm of the coefficients which are removed).
 
 ### Sums
 
@@ -153,7 +153,7 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 | `abs`, `abs2` | modulus and squared modulus (a `Gaussian`) | ✓ | | |
 | `coulomb_integral` | $\int G(x)/\lvert x\rvert\,dx$ for an isotropic 3D packet | ✓ | | |
 | `truncate_to_gaussian` | Gaussian part of the function | ✓ | ✓ | |
-| `truncate(H, Val(K))` | keeps the first `K` Hermite coefficients | | ✓ | |
+| `truncate_hermite(H, Val(K))` | keeps the first `K` Hermite coefficients | | ✓ | |
 | `zero`, `copy`, `show` | | ✓ | ✓ | ✓ |
 
 ¹ Provided that all the terms support it.

@@ -23,7 +23,7 @@ function hermite_operations(H::HermiteWavePacket1D)
     return Any[(evaluate, (H, 0.3)), (evaluate_grid, (H, SVector(0.1, 0.2))), (*, (H, H2)), (*, (2.0, H)),
                (integral, (H,)), (fourier, (H,)), (inv_fourier, (H,)), (convolution, (H, H2)), (dot_L2, (H, H2)),
                (norm2_L2, (H,)), (unitary_product, (H, 0.5, 0.1, 0.2)), (polynomial_product, (H, SVector(1.0, 2.0), 0.3)),
-               (truncate, (H, Val(2))), (truncate_to_gaussian, (H,))]
+               (truncate_hermite, (H, Val(2))), (truncate_to_gaussian, (H,))]
 end
 
 function test_type_stability()

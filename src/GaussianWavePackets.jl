@@ -33,6 +33,7 @@ export hermite_discrete_transform
 export hermite_discrete_transform!
 export hermite_quadrature
 export truncate_to_gaussian
+export truncate_hermite
 export integral
 export ∫
 export unitary_product
