@@ -41,12 +41,12 @@ end
     return w * G
 end
 
-function Base.iterate(G::AbstractWavePacket)
-    return (G, nothing)
-end
-function Base.iterate(::AbstractWavePacket, ::Nothing)
-    return nothing
-end
+# function Base.iterate(G::AbstractWavePacket)
+#     return (G, nothing)
+# end
+# function Base.iterate(::AbstractWavePacket, ::Nothing)
+#     return nothing
+# end
 
 # Base.:*(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D = *(promote(G1, G2)...)
 # convolution(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D = convolution(promote(G1, G2)...)

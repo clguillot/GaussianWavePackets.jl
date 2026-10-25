@@ -6,6 +6,15 @@ function test_wave_packet_sum()
         # Mixed absolute/relative error (some quantities can be small)
         err_rel(a, b) = abs(a - b) / (1 + abs(b))
 
+        # Number of bytes allocated by f(args...). The measure is done behind a function barrier because the loops
+        # over sums of different types are not type stable. Only the sums stored in a Tuple are measured
+        # (the ones stored in a Vector necessarily allocate)
+        # (the arity is fixed: with a splatted `args...`, the compilation takes more than a minute)
+        alloc_of(f, a) = (f(a); @allocated f(a))
+        alloc_of(f, a, b) = (f(a, b); @allocated f(a, b))
+        alloc_of(f, a, b, c) = (f(a, b, c); @allocated f(a, b, c))
+        alloc_of(f, a, b, c, d) = (f(a, b, c, d); @allocated f(a, b, c, d))
+
         rand_gauss() = GaussianWavePacket(rand() + 1im * rand(), 4 * rand() + 0.5 + im * (4 * rand() - 2),
                                           4 * (rand() - 0.5), 4 * (rand() - 0.5))
         rand_hermite(N) = HermiteWavePacket1D(SVector{N}(rand(N) + im * rand(N)), 4 * rand() + 0.5 + im * (4 * rand() - 2),
@@ -29,20 +38,25 @@ function test_wave_packet_sum()
 
         @testset "evaluate" begin
             err = 0.0
+            alloc = 0
             for S in (SG, SH, SM, SV, SA), _=1:10
                 x = rand_x()
+                S.g isa Tuple && (alloc += alloc_of(S, x))
                 err = max(err, err_rel(S(x), sum_terms(g -> g(x), S)))
                 err = max(err, err_rel(S(x[1]), sum_terms(g -> g(x), S)))
                 err = max(err, err_rel(evaluate(S, x), sum_terms(g -> g(x), S)))
             end
 
             @test err <= tol
+            report_alloc("evaluate", alloc)
         end
 
         @testset "linear operations" begin
             err = 0.0
+            alloc = 0
             for S in (SG, SH, SM, SV, SA)
                 x = rand_x()
+                S.g isa Tuple && (alloc += alloc_of(*, w, S) + alloc_of(/, S, w) + alloc_of(-, S) + alloc_of(conj, S))
                 err = max(err, err_rel((w * S)(x), w * S(x)))
                 err = max(err, err_rel((S * w)(x), w * S(x)))
                 err = max(err, err_rel((S / w)(x), S(x) / w))
@@ -54,12 +68,15 @@ function test_wave_packet_sum()
             end
 
             @test err <= tol
+            report_alloc("linear operations", alloc)
         end
 
         @testset "product" begin
             err = 0.0
+            alloc = 0
             for (S1, S2) in ((SG, SH), (SM, SG), (SV, SA), (SH, SH))
                 x = rand_x()
+                S1.g isa Tuple && S2.g isa Tuple && (alloc += alloc_of(*, S1, S2))
                 err = max(err, err_rel((S1 * S2)(x), S1(x) * S2(x)))
                 err = max(err, err_rel((S1 - S2)(x), S1(x) - S2(x)))
                 err = max(err, err_rel((S1 + S2)(x), S1(x) + S2(x)))
@@ -68,27 +85,34 @@ function test_wave_packet_sum()
                 x = rand_x()
                 err = max(err, err_rel((G[1] * S)(x), G[1](x) * S(x)))
                 err = max(err, err_rel((S * H[1])(x), H[1](x) * S(x)))
+                alloc += alloc_of(*, G[1], S) + alloc_of(*, S, H[1])
             end
 
             @test err <= tol
+            report_alloc("product", alloc)
         end
 
         @testset "integral and Fourier" begin
             err = 0.0
+            alloc = 0
             for S in (SG, SH, SM, SA)
                 ξ = rand_x()
+                S.g isa Tuple && (alloc += alloc_of(integral, S) + alloc_of(fourier, S) + alloc_of(inv_fourier, S))
                 err = max(err, err_rel(integral(S), sum_terms(integral, S)))
                 err = max(err, err_rel(fourier(S)(ξ), sum_terms(g -> fourier(g)(ξ), S)))
                 err = max(err, err_rel(inv_fourier(fourier(S))(ξ), S(ξ)))
             end
 
             @test err <= tol
+            report_alloc("integral and Fourier", alloc)
         end
 
         @testset "convolution" begin
             err = 0.0
+            alloc = 0
             x0 = rand_x()
             for (S1, S2) in ((SG, SG), (SH, SH), (SG, SH))
+                alloc += alloc_of(convolution, S1, S2)
                 ref = sum(convolution(a, b)(x0) for a in terms(S1), b in terms(S2))
                 err = max(err, err_rel(convolution(S1, S2)(x0), ref))
             end
@@ -98,15 +122,18 @@ function test_wave_packet_sum()
                     ref2 = sum(convolution(g, a)(x0) for a in terms(S))
                     err = max(err, err_rel(convolution(S, g)(x0), ref1))
                     err = max(err, err_rel(convolution(g, S)(x0), ref2))
+                    alloc += alloc_of(convolution, S, g) + alloc_of(convolution, g, S)
                 end
             end
 
             @test err <= tol
+            report_alloc("convolution", alloc)
         end
 
         @testset "unitary product" begin
             err = 0.0
             b, q, p = 4 * (rand() - 0.5), 4 * (rand() - 0.5), 4 * (rand() - 0.5)
+            alloc = alloc_of(unitary_product, SG, Diagonal(SVector(b)), SVector(q), SVector(p)) + alloc_of(unitary_product, SH, b, q, p)
             # Gaussians and hermite wave packets do not have the same convention for b, q, p
             # (matrix and vectors for the former, scalars for the latter)
             S1 = unitary_product(SG, Diagonal(SVector(b)), SVector(q), SVector(p))
@@ -120,14 +147,17 @@ function test_wave_packet_sum()
             end
 
             @test err <= tol
+            report_alloc("unitary product", alloc)
         end
 
         @testset "polynomial product" begin
             err = 0.0
+            alloc = 0
             NP = 4
             P = SVector{NP}(rand(NP) + im * rand(NP))
             q0 = 4 * (rand() - 0.5)
             for S in (SG, SH)
+                alloc += alloc_of(polynomial_product, S, P, q0)
                 PS = polynomial_product(S, P, q0)
                 for _=1:10
                     x = rand_x()
@@ -137,11 +167,14 @@ function test_wave_packet_sum()
             end
 
             @test err <= tol
+            report_alloc("polynomial product", alloc)
         end
 
         @testset "dot and norm L²" begin
             err = 0.0
+            alloc = 0
             for S in (SG, SH, SM, SV, SA)
+                S.g isa Tuple && (alloc += alloc_of(dot_L2, S, S) + alloc_of(norm2_L2, S))
                 ref = sum(dot_L2(a, b) for a in terms(S), b in terms(S))
                 err = max(err, err_rel(dot_L2(S, S), ref))
                 err = max(err, err_rel(norm2_L2(S), real(ref)))
@@ -151,16 +184,21 @@ function test_wave_packet_sum()
                 for g in (G[3], H[3])
                     err = max(err, err_rel(dot_L2(S, g), sum_terms(a -> dot_L2(a, g), S)))
                     err = max(err, err_rel(dot_L2(g, S), sum_terms(a -> dot_L2(g, a), S)))
+                    alloc += alloc_of(dot_L2, S, g) + alloc_of(dot_L2, g, S)
                 end
             end
 
             @test err <= tol
+            report_alloc("dot and norm L²", alloc)
         end
 
         @testset "dot and norm ∇" begin
             err = 0.0
+            alloc = 0
             c = SVector(4 * (rand() - 0.5))
             for S in (SG, SV)
+                S.g isa Tuple && (alloc += alloc_of(dot_∇, S, S) + alloc_of(norm2_∇, S) + alloc_of(dot_∇, S, S, c) + alloc_of(norm2_∇, S, c)
+                                          + alloc_of(dot_∇, S, G[3]) + alloc_of(dot_∇, G[3], S))
                 ref = sum(dot_∇(a, b) for a in terms(S), b in terms(S))
                 err = max(err, err_rel(dot_∇(S, S), ref))
                 err = max(err, err_rel(norm2_∇(S), real(ref)))
@@ -174,20 +212,49 @@ function test_wave_packet_sum()
             end
 
             @test err <= tol
+            report_alloc("dot and norm ∇", alloc)
         end
 
-        @testset "Iteration and display" begin
-            # Nested sums are flattened when iterating, and can be displayed
-            S = (G[1] + G[2]) + (H[1] + H[2] + H[3])
-            n_terms = 0
-            for _ in S
-                n_terms += 1
+        @testset "nested sums" begin
+            err = 0.0
+            leaves = AbstractWavePacket{1}[G[1], G[2], H[1], H[2], H[3]]
+            S = (G[1] + G[2]) + (H[1] + H[2] + H[3])        # sum of two sums
+            T = S + G[3]                                      # sum of a sum and a wave packet
+            leaves_T = [leaves; G[3]]
+            ref_ST = sum(dot_L2(a, b) for a in leaves, b in leaves_T)
+            for _=1:10
+                x = rand_x()
+                err = max(err, err_rel(S(x), sum(g(x) for g in leaves)))
+                err = max(err, err_rel(T(x), S(x) + G[3](x)))
             end
-            shown = sprint(show, SV)
+            ref_SS = sum(dot_L2(a, b) for a in leaves, b in leaves)
+            err = max(err, err_rel(dot_L2(S, S), ref_SS))
+            err = max(err, err_rel(norm2_L2(S), real(ref_SS)))
+            err = max(err, err_rel(dot_L2(S, T), ref_ST))
+            err = max(err, err_rel(norm2_L2(T), real(sum(dot_L2(a, b) for a in leaves_T, b in leaves_T))))
 
-            @test n_terms == 5
+            SGN = (G[1] + G[2]) + G[3]                        # gaussians only (the gradient is not defined for the others)
+            ref_∇ = sum(dot_∇(a, b) for a in G, b in G)
+            err = max(err, err_rel(dot_∇(SGN, SGN), ref_∇))
+            err = max(err, err_rel(norm2_∇(SGN), real(ref_∇)))
+            err = max(err, err_rel(integral(S), sum(integral(g) for g in leaves)))
+
+            @test err <= tol
+        end
+
+        @testset "unsupported operations" begin
+            # The operations not defined for the terms give a clean error (no infinite recursion)
+            @test_throws MethodError dot_∇(H[1], H[2])
+            @test_throws MethodError dot_∇(SH, SH)
+            @test_throws MethodError norm2_∇(SH)
+        end
+
+        @testset "display" begin
+            shown = sprint(show, SV)
             @test occursin("20 terms", shown)
             @test occursin("more", shown)
+            @test occursin("2 terms", sprint(show, G[1] + H[1]))
+            @test occursin("1 term:", sprint(show, WavePacketSum(G[1])))
         end
 
         @testset "Constructor checks" begin

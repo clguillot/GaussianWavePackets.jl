@@ -283,6 +283,11 @@ function HermiteWavePacket1D(G::GaussianWavePacket{1})
     return HermiteWavePacket1D(SVector(λ), G.z[1, 1], G.q[1], G.p[1])
 end
 
+# Converts a 1D gaussian wave packet to a hermite wave packet of type HermiteWavePacket1D{N, TΛ, Tz, Tq, Tp}
+function Base.convert(::Type{HermiteWavePacket1D{N, TΛ, Tz, Tq, Tp}}, G::GaussianWavePacket{1}) where{N, TΛ, Tz, Tq, Tp}
+    return convert(HermiteWavePacket1D{N, TΛ, Tz, Tq, Tp}, HermiteWavePacket1D(G))
+end
+
 function Base.promote_rule(::Type{<:GaussianWavePacket{1, Tλ1, Tz1, Cz1, Tq1, Tp1}},
                       ::Type{HermiteWavePacket1D{N, TΛ2, Tz2, Tq2, Tp2}}) where{Tλ1, Tz1, Cz1, Tq1, Tp1, N, TΛ2, Tz2, Tq2, Tp2}
     return HermiteWavePacket1D{N, promote_type(Tλ1, TΛ2), promote_type(Tz1, Tz2), promote_type(Tq1, Tq2), promote_type(Tp1, Tp2)}

@@ -74,10 +74,17 @@ function test_hermite_wave_packets_1d()
                 alloc += @allocated H = HermiteWavePacket1D(G)
                 alloc += @allocated G_ = truncate_to_gaussian(H)
 
+                # Conversion to a larger type, and promotion
+                H2 = HermiteWavePacket1D(SVector{3}(rand(3) + im * rand(3)), z, q, p)
+                Hc = convert(typeof(H2), G)
+                Hp = [G, H2]
+
                 for _ in 1:100
                     x = 4.0 * (rand() - 0.5)
                     err = max(err, abs(H(x) - G(x)))
                     err = max(err, abs(G_(x) - G(x)))
+                    err = max(err, abs(Hc(x) - G(x)))
+                    err = max(err, abs(Hp[1](x) - G(x)), abs(Hp[2](x) - H2(x)))
                 end
             end
 

@@ -10,10 +10,8 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NullNumbers = "1f86935a-ad3c-47cd-9a52-71de3d40cd89"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-Unroll = "36e64239-2ab9-4580-84fb-56737a503d36"
 
 [compat]
-julia = "1.11"
 Cubature = "1.5.1"
 FastGaussQuadrature = "1.0.2"
 IrrationalConstants = "0.2.4"
@@ -21,7 +19,7 @@ LinearAlgebra = "1.11.0"
 NullNumbers = "0.1.0"
 SpecialFunctions = "2.4.0"
 StaticArrays = "1.9.8"
-Unroll = "0.1.0"
+julia = "1.11"
 
 [extras]
 Cubature = "667455a9-e2ce-5579-9412-b964f529a492"
