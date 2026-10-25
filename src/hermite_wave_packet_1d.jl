@@ -19,10 +19,27 @@
         ̂ψₙ = √(2π) * (-i)ⁿ * exp(ipq) * ψₙ(1/a, p, -q, ξ)
 =#
 
-#=
-    Represents the complex hermite wave packet
-        ∑ₙ Λ[n+1] ψₙ(z, q, p, x) (n=0,...,N-1)
-=#
+"""
+    HermiteWavePacket1D(Λ, z, q=0, p=0)
+
+Represents the complex Hermite wave packet in dimension 1
+
+    H(x) = ∑ₙ Λ[n+1] ψₙ(z, q, p, x)    (n=0,...,N-1)
+
+where `Λ` is an `SVector` of `N` coefficients, `z = a + ib` is a complex number with `a > 0`,
+`q`, `p` are real numbers, and
+
+    ψₙ(z, q, p, x) = (a/π)^(1/4) / sqrt(2ⁿn!) Hₙ(√a(x-q)) exp(-z(x-q)²/2) exp(ipx)
+
+(`Hₙ` being the physicists' Hermite polynomials), so that the ψₙ are orthonormal in L².
+A single number `λ` can be given instead of `Λ` (then `N = 1`).
+`q` and `p` are optional (they are then stored as `NullNumber`s, statically known to be zero).
+
+The number of coefficients `N` is part of the type: products and convolutions grow it
+(`N₁ + N₂ - 1`), and it is never reduced automatically (see [`truncate`](@ref)).
+
+See also [`HermiteFct1D`](@ref), [`GaussianWavePacket`](@ref).
+"""
 struct HermiteWavePacket1D{N, TΛ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealOrNull} <: AbstractWavePacket{1}
     Λ::SVector{N, TΛ}
     z::Tz
@@ -37,10 +54,17 @@ struct HermiteWavePacket1D{N, TΛ<:Number, Tz<:Number, Tq<:RealOrNull, Tp<:RealO
     end
 end
 
-#=
-    Represents the real hermite function
-        ∑ₙ Λ[n+1] ψₙ(a, q, x) (n=0,...,N-1)
-=#
+"""
+    HermiteFct1D(Λ, a, q=0)
+    HermiteFct1D(G::Gaussian{1})
+
+Represents the Hermite function
+
+    H(x) = ∑ₙ Λ[n+1] ψₙ(a, q, 0, x)    (n=0,...,N-1)
+
+with a real variance `a > 0` and no momentum (see [`HermiteWavePacket1D`](@ref) for the
+definition of ψₙ). It is an alias of a `HermiteWavePacket1D` whose `p` is a `NullNumber`.
+"""
 const HermiteFct1D{N, TΛ<:Number, Tz<:Real, Tq<:RealOrNull} = HermiteWavePacket1D{N, TΛ, Tz, Tq, NullNumber}
 function HermiteFct1D(Λ::SVector{N, <:Number}, z::Real, q::RealOrNull=NullNumber()) where N
     return HermiteWavePacket1D(Λ, z, q, NullNumber())
@@ -60,13 +84,30 @@ function Base.convert(::Type{HermiteWavePacket1D{N, TΛ, Tz, Tq, Tp}}, H::Hermit
     if N < N2
         throw(ArgumentError("Cannot convert HermiteWavePacket1D{$N2} to HermiteWavePacket1D{$N}: N=$N is smaller than N2=$N2"))
     end
-    Λ = SVector{N}(n <= N2 ? convert(TΛ, H.Λ[n]) : zero(TΛ) for n in 1:N)
+    Λ = SVector{N, TΛ}(ntuple(n -> n <= N2 ? convert(TΛ, H.Λ[n]) : zero(TΛ), Val(N)))
     return HermiteWavePacket1D(Λ, convert(Tz, H.z), convert(Tq, H.q), convert(Tp, H.p))
 end
 
 function truncate_to_gaussian(H::HermiteWavePacket1D)
     a = real(H.z)
-    return GaussianWavePacket((invπ*a)^Rational(1, 4) * first(H.Λ), H.z, H.q, H.p)
+    return GaussianWavePacket(sqrt(sqrt(invπ*a)) * first(H.Λ), H.z, H.q, H.p)
+end
+
+"""
+    truncate(H::HermiteWavePacket1D, Val(K))
+
+Returns the Hermite wave packet made of the first `K` coefficients of `H` (the components on
+ψ₀, ..., ψ_{K-1}), with the same `z`, `q` and `p`. If `K` is larger than the number of
+coefficients of `H`, the missing coefficients are set to zero.
+
+Since products and convolutions increase the number of coefficients, this can be used to keep
+it bounded. It is never done automatically: the error made is the L² norm of the coefficients
+which are removed.
+"""
+function Base.truncate(H::HermiteWavePacket1D{N, TΛ}, ::Val{K}) where{N, TΛ, K}
+    (K isa Integer && K >= 0) || throw(ArgumentError("The number of coefficients K must be a nonnegative integer"))
+    Λ = SVector{K, TΛ}(ntuple(n -> n <= N ? H.Λ[n] : zero(TΛ), Val(K)))
+    return HermiteWavePacket1D(Λ, H.z, H.q, H.p)
 end
 
 #=
@@ -137,15 +178,20 @@ end
 function evaluate(H::HermiteWavePacket1D, x::Number)
     a = real(H.z)
     y = x - H.q
-    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, exp(-a/2*y^2))
-    return (invπ*a)^Rational(1, 4) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
+    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, -a/2*y^2)
+    return sqrt(sqrt(invπ*a)) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
 end
-# Evaluates a hermite wave packet at all the points in x
+"""
+    evaluate_grid(H::HermiteWavePacket1D, x::SVector)
+
+Evaluates the Hermite wave packet `H` at all the points of `x`, and returns the values as an
+`SVector` (this is faster than evaluating `H` at each point separately).
+"""
 function evaluate_grid(H::HermiteWavePacket1D, x::SVector{M, <:Number}) where M
     a = real(H.z)
     y = x .- H.q
-    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, @. exp(-a/2*y^2))
-    return @. (invπ*a)^Rational(1, 4) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
+    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, @. -a/2*y^2)
+    return @. sqrt(sqrt(invπ*a)) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
 end
 # Evaluates a hermite wave packet at x
 (H::HermiteWavePacket1D)(x::Number) = evaluate(H, x)
@@ -164,8 +210,10 @@ function unitary_product(H::HermiteWavePacket1D, b::RealOrNull, q::RealOrNull=Nu
     return HermiteWavePacket1D(α .* H.Λ, H.z + im*b, H.q, H.p + p - b*(H.q - q))
 end
 
-# Computes the product of two hermite wave packets (real variance)
-function Base.:*(H1::HermiteWavePacket1D{N1, TΛ1, Tz1}, H2::HermiteWavePacket1D{N2, TΛ2, Tz2}) where{N1, TΛ1, Tz1<:Real, N2, TΛ2, Tz2<:Real}
+# Computes the product of two hermite functions (real variance, no momentum)
+# (with a momentum, the product of the values is not a polynomial times a gaussian, so that the
+# discrete transform would not be exact: this case is handled by the general method below)
+function Base.:*(H1::HermiteFct1D{N1, TΛ1, Tz1}, H2::HermiteFct1D{N2, TΛ2, Tz2}) where{N1, TΛ1, Tz1<:Real, N2, TΛ2, Tz2<:Real}
     N = max(N1 + N2 - 1, 0)
     z, q, p = first.(gaussian_product_arg(SVector(H1.z), SVector(H1.q), SVector(H1.p), SVector(H2.z), SVector(H2.q), SVector(H2.p)))
     x = hermite_grid(z, q, Val(N))
@@ -199,9 +247,39 @@ function polynomial_product(H::HermiteWavePacket1D, P::SVector{NP, <:Number}, q:
     return HermiteWavePacket1D(Hr.Λ, H.z, H.q, H.p)
 end
 
-# Computes the integral of a hermite wave packet
-function integral(H::HermiteWavePacket1D)
-    return fourier(H)(NullNumber())
+#=
+    Computes ∑ₙ Λ[n+1] hₙ(t), where hₙ = ψₙ(1, 0, 0, ⋅) are the standard Hermite functions
+    If t is a NullNumber (t = 0), only the even n contribute, with
+        h₀(0) = π^(-1/4)    hₙ₊₂(0) = -√((n+1)/(n+2)) hₙ(0)
+=#
+function _hermite_functions_sum(Λ::SVector{N}, t::Real) where N
+    return sqrt(sqrt(invπ * one(t))) * clenshaw_hermite_eval(Λ, sqrt(2 * one(t)), t, -t^2/2)
+end
+function _hermite_functions_sum(Λ::SVector{N, TΛ}, ::NullNumber) where{N, TΛ}
+    T = fitting_float(TΛ)
+    h = sqrt(sqrt(T(invπ)))
+    s = zero(promote_type(TΛ, T))
+    for n in 0:2:N-1
+        s += Λ[n+1] * h
+        h *= -sqrt(T(n+1) / T(n+2))
+    end
+    return s
+end
+
+#=
+    Computes the integral of a hermite wave packet
+    ∫ψₙ(z, q, p, x)dx is the value at ξ = 0 of its Fourier transform
+        μ αⁿ ψₙ(1/z, p, -q, ξ)
+    (see `fourier`), and with a_f = Re(1/z),
+        ψₙ(1/z, p, -q, 0) = a_f^(1/4) hₙ(-p√a_f) exp(-i Im(1/z) p²/2)
+=#
+function integral(H::HermiteWavePacket1D{N}) where N
+    zf = inv(H.z)
+    af = real(zf)
+    μ, α = _fourier_factors(H)
+    Λα = _powers(α, Val(N)) .* H.Λ
+    c = μ * sqrt(sqrt(af)) * cis(-imagz(zf) * H.p^2 / 2)
+    return c * _hermite_functions_sum(Λα, -H.p * sqrt(af))
 end
 
 #=
@@ -209,19 +287,34 @@ end
     The Fourier transform is defined as
         TF(ψ)(ξ) = ∫dx e^(-ixξ) ψ(x)
 =#
+# The factors μ, α such that the Fourier transform of ψₙ(z, q, p, ⋅) is μαⁿψₙ(1/z, p, -q, ⋅)
+function _fourier_factors(H::HermiteWavePacket1D)
+    T = fitting_float(H)
+    μ = sqrt(abs(H.z)) * T(sqrt2π) / sqrt(H.z) * cis(H.p*H.q)
+    α = -im * conj(H.z) / abs(H.z)
+    return μ, α
+end
+# The factors μ, α such that the inverse Fourier transform of ψₙ(z, q, p, ⋅) is μαⁿψₙ(1/z, -p, q, ⋅)
+function _inv_fourier_factors(H::HermiteWavePacket1D)
+    T = fitting_float(H)
+    μ = sqrt(abs(H.z)) * T(invsqrt2π) / sqrt(H.z) * cis(H.p*H.q)
+    α = im * conj(H.z) / abs(H.z)
+    return μ, α
+end
+
 # Real variance
 function fourier(H::HermiteWavePacket1D{N, TΛ, Tz}) where{N, TΛ, Tz<:Real}
+    T = fitting_float(H)
     zf, qf, pf = first.(gaussian_fourier_arg(SVector(H.z), SVector(H.q), SVector(H.p)))
-    M = SVector{N}(Complex{Int8}((-im)^n) for n in 0:N-1)
-    Λf = (sqrt2π * cis(H.p*H.q)) .* M .* H.Λ
+    M = SVector{N}(ntuple(n -> Complex{Int8}((-im)^(n-1)), Val(N)))
+    Λf = (T(sqrt2π) * cis(H.p*H.q)) .* M .* H.Λ
     return HermiteWavePacket1D(Λf, zf, qf, pf)
 end
 # Complex variance
 function fourier(H::HermiteWavePacket1D{N, TΛ, Tz}) where{N, TΛ, Tz}
     zf, qf, pf = first.(gaussian_fourier_arg(SVector(H.z), SVector(H.q), SVector(H.p)))
-    μ = abs2(H.z)^Rational(1, 4) / (invsqrt2π * sqrt(H.z)) * cis(H.p*H.q)
-    α = -im * conj(H.z) / abs(H.z)
-    Λf = μ .* SVector{N}(α^n * H.Λ[n+1] for n in 0:N-1)
+    μ, α = _fourier_factors(H)
+    Λf = μ .* _powers(α, Val(N)) .* H.Λ
     return HermiteWavePacket1D(Λf, zf, qf, pf)
 end
 
@@ -232,17 +325,17 @@ end
 =#
 # Real variance
 function inv_fourier(H::HermiteWavePacket1D{N, TΛ, Tz}) where{N, TΛ, Tz<:Real}
+    T = fitting_float(H)
     zf, qf, pf = first.(gaussian_inv_fourier_arg(SVector(H.z), SVector(H.q), SVector(H.p)))
-    M = SVector{N}(Complex{Int8}(im^n) for n in 0:N-1)
-    Λf = (invsqrt2π * cis(H.p*H.q)) .* M .* H.Λ
+    M = SVector{N}(ntuple(n -> Complex{Int8}(im^(n-1)), Val(N)))
+    Λf = (T(invsqrt2π) * cis(H.p*H.q)) .* M .* H.Λ
     return HermiteWavePacket1D(Λf, zf, qf, pf)
 end
 # Complex variance
 function inv_fourier(H::HermiteWavePacket1D{N, TΛ, Tz}) where{N, TΛ, Tz}
     zf, qf, pf = first.(gaussian_inv_fourier_arg(SVector(H.z), SVector(H.q), SVector(H.p)))
-    μ = abs2(H.z)^Rational(1, 4) / (sqrt2π * sqrt(H.z)) * cis(H.p*H.q)
-    α = im * conj(H.z) / abs(H.z)
-    Λf = μ .* SVector{N}(α^n * H.Λ[n+1] for n in 0:N-1)
+    μ, α = _inv_fourier_factors(H)
+    Λf = μ .* _powers(α, Val(N)) .* H.Λ
     return HermiteWavePacket1D(Λf, zf, qf, pf)
 end
 
@@ -279,7 +372,8 @@ end
 =#
 
 function HermiteWavePacket1D(G::GaussianWavePacket{1})
-    λ = G.λ * (invπ*real(G.z[1, 1]))^Rational(-1, 4)
+    _check_integrable(G)
+    λ = G.λ / sqrt(sqrt(invπ*real(G.z[1, 1])))
     return HermiteWavePacket1D(SVector(λ), G.z[1, 1], G.q[1], G.p[1])
 end
 
