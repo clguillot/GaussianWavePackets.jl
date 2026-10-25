@@ -1,25 +1,29 @@
 #=
-    Computes the analytic extension of the Cholesky decomposition (LᵀL=A)
-    Returns the UpperTriangular part of the decomposition
+    Computes the analytic extension of the Cholesky decomposition (UᵀU=A, without conjugation)
+    of a complex symmetric matrix A whose real part is positive definite.
+    Returns the upper triangular factor U (whose diagonal has a positive real part).
+    Throws a PosDefException if a pivot does not have a (strictly) positive real part.
 =#
 
 # Diagonal
 function special_cholesky(D::SDiagonal)
-    any(x -> real(x) < 0, D.diag) && throw(LinearAlgebra.PosDefException(1))
+    any(x -> !(real(x) > zero(real(x))), D.diag) && throw(LinearAlgebra.PosDefException(1))
     C = sqrt.(D.diag)
     return SDiagonal(C)
 end
 
 # Dense
 function special_cholesky(A::Symmetric{<:Number, <:StaticMatrix})
-    _special_cholesky(Size(A), A.data)
+    # The algorithm reads the upper triangle
+    data = A.uplo == 'U' ? SMatrix(parent(A)) : SMatrix(transpose(parent(A)))
+    _special_cholesky(Size(A), data)
 end
 
 @inline function _sp_chol_failure(info)
     throw(LinearAlgebra.PosDefException(info))
 end
-# x < zero(x) is check used in `sqrt`, letting LLVM eliminate that check and remove error code.
-@inline _sp_nonpdcheck(x::Number) = real(x) ≥ zero(real(x))
+# The pivots must have a positive real part (NaN fails the check)
+@inline _sp_nonpdcheck(x::Number) = real(x) > zero(real(x))
 @inline _sp_nonpdcheck(x) = x == x
 
 #=
@@ -63,7 +67,6 @@ end
             push!(q.args, :($L_m_n = muladd(-$L_m_k, $L_n_k, $L_m_n)))
         end
         L_n_n = Symbol(:L_,n,:_,n)
-        L_n_n_ltz = Symbol(:L_,n,:_,n,:_,:ltz)
         push!(q.args, :(_sp_nonpdcheck($L_n_n) || return _sp_chol_failure($n)))
         push!(q.args, :($L_n_n = sqrt($L_n_n)))
         Linv_n_n = Symbol(:Linv_,n,:_,n)
@@ -73,7 +76,9 @@ end
             push!(q.args, :($L_m_n *= $Linv_n_n))
         end
     end
-    push!(q.args, :(T = eltype(A)))
+    # Element type of the result: the promoted type of the entries of the factor
+    # (and not eltype(A), which may be an integer type)
+    push!(q.args, :(T = promote_type($((:(typeof($(Symbol(:L_,m,:_,n)))) for n ∈ 1:M for m ∈ n:M)...))))
     ret = Expr(:tuple)
     for n ∈ 1:M
         for m ∈ 1:n
@@ -83,6 +88,6 @@ end
             push!(ret.args, :(zero(T)))
         end
     end
-    push!(q.args, :(UpperTriangular(typeof(A)($ret))))
+    push!(q.args, :(UpperTriangular(SMatrix{M, M, T}($ret))))
     return Expr(:block, Expr(:meta, :inline), q)
 end
