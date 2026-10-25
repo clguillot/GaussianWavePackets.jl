@@ -310,7 +310,7 @@ end
             p0 = imagz.(w) * y2 - _imagz(z1) * y1_
             # All the exponents are combined in a single exp and a single cis
             E = (_quad(y1_, z1) - _quad(y2, z2)) / 2
-            λ = G.λ * exp(real(E)) * cis(imag(E) + _bdot(p2, x2) + _bdot(p0, q1))
+            λ = G.λ * exp(real(E)) * cis(imagz(E) + _bdot(p2, x2) + _bdot(p0, q1))
             return GaussianWavePacket(λ, z1, q1 - y1_, G.p[$I1] - p0)
         end
         return code
@@ -346,7 +346,7 @@ function Base.:*(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     p = G1.p + G2.p + p0
     # λ = G1(q) * G2(q) * cis(-p⋅q), with all the exponents combined in a single exp and a single cis
     E = (_quad(y1, G1.z) + _quad(y2, G2.z)) / 2
-    λ = G1.λ * G2.λ * exp(-real(E)) * cis(-imag(E) - _bdot(p0, q))
+    λ = G1.λ * G2.λ * exp(-real(E)) * cis(-imagz(E) - _bdot(p0, q))
     return GaussianWavePacket(λ, z, q, p)
 end
 # Product of two plane waves
@@ -416,9 +416,9 @@ end
             US = special_cholesky(real(S))
             δ = US \ (transpose(US) \ real(w))
             q_ = q1 + δ
-            p_ = imag(w) - _imagz(S) * δ
+            p_ = imagz.(w) - _imagz(S) * δ
             E = _bdot(w, δ) - _quad(δ, S) / 2
-            λ = c * exp(real(E)) * cis(imag(E) - _bdot(p_, q_))
+            λ = c * exp(real(E)) * cis(imagz(E) - _bdot(p_, q_))
             return GaussianWavePacket(λ, S, q_, p1 + p_)
         end
         return code

@@ -9,7 +9,8 @@ include("test.jl")
 const SEED = 1
 
 @testset "GaussianWavePackets" begin
-    for test in (test_gaussian, test_gaussian_wave_packet, test_hermite_wave_packets_1d, test_wave_packet_sum)
+    for test in (test_gaussian, test_gaussian_wave_packet, test_hermite_wave_packets_1d, test_wave_packet_sum,
+                 test_type_stability, test_quality)
         Random.seed!(SEED)
         test()
     end

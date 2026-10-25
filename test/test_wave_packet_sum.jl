@@ -6,14 +6,8 @@ function test_wave_packet_sum()
         # Mixed absolute/relative error (some quantities can be small)
         err_rel(a, b) = abs(a - b) / (1 + abs(b))
 
-        # Number of bytes allocated by f(args...). The measure is done behind a function barrier because the loops
-        # over sums of different types are not type stable. Only the sums stored in a Tuple are measured
-        # (the ones stored in a Vector necessarily allocate)
-        # (the arity is fixed: with a splatted `args...`, the compilation takes more than a minute)
-        alloc_of(f, a) = (f(a); @allocated f(a))
-        alloc_of(f, a, b) = (f(a, b); @allocated f(a, b))
-        alloc_of(f, a, b, c) = (f(a, b, c); @allocated f(a, b, c))
-        alloc_of(f, a, b, c, d) = (f(a, b, c, d); @allocated f(a, b, c, d))
+        # Allocations are measured with alloc_of (see test.jl). Only the sums stored in a Tuple
+        # are measured (the ones stored in a Vector with an abstract element type necessarily allocate)
 
         rand_gauss() = GaussianWavePacket(rand() + 1im * rand(), 4 * rand() + 0.5 + im * (4 * rand() - 2),
                                           4 * (rand() - 0.5), 4 * (rand() - 0.5))
@@ -261,6 +255,79 @@ function test_wave_packet_sum()
             @test_throws MethodError WavePacketSum{2}(G[1], G[2])
             @test_throws ArgumentError WavePacketSum{1}([1.0, 2.0])
             @test WavePacketSum{1}(G[1]) isa WavePacketSum{1}
+        end
+
+        @testset "scalar evaluation" begin
+            err = 0.0
+            alloc = 0
+            for S in (SG, SH, SM, SV, SA), _=1:10
+                x = rand_x()
+                err = max(err, err_rel(evaluate(S, x[1]), S(x)), err_rel(S(x[1]), S(x)))
+                S.g isa Tuple && (alloc += alloc_of(evaluate, S, x[1]))
+            end
+
+            @test err <= tol
+            report_alloc("scalar evaluation", alloc)
+        end
+
+        @testset "dimension selectors" begin
+            err = 0.0
+            alloc = 0
+            S2 = rand_gwp(Val(3), :sym, true, true, true) + rand_gwp(Val(3), :diag, true, true, false) + rand_gwp(Val(3), :sym, false, false, true)
+            for _=1:10
+                x = SVector{3}(4 .* (rand(3) .- 0.5))
+                Sx = evaluate(S2, x[SVector(3, 1)]; dims=(3, 1))
+                err = max(err, err_rel(Sx(x[SVector(2)]), S2(x)))
+                err = max(err, err_rel(evaluate(S2, x[SVector(2, 3, 1)]; dims=(2, 3, 1)), S2(x)))
+                Si = integral(S2; dims=(2,))
+                err = max(err, err_rel(Si(x[SVector(1, 3)]), sum(integral(g; dims=(2,))(x[SVector(1, 3)]) for g in S2.g)))
+            end
+            err = max(err, err_rel(integral(S2; dims=(1, 2, 3)), integral(S2)))
+            alloc += alloc_of(S -> integral(S; dims=(2,)), S2) + alloc_of((S, x) -> evaluate(S, x; dims=(3, 1)), S2, SVector(0.1, 0.2))
+
+            @test err <= tol
+            report_alloc("dimension selectors", alloc)
+        end
+
+        @testset "containers" begin
+            # Static vector
+            SS = WavePacketSum(SVector(G[1], G[2]))
+            x = rand_x()
+            @test SS(x) ≈ G[1](x) + G[2](x)
+            @test zero(typeof(SS))(x) == 0
+            @test norm2_L2(SS) ≈ norm2_L2(G[1] + G[2])
+            # Empty sums
+            E = WavePacketSum{1}(typeof(G[1])[])
+            @test E(x) == 0 && integral(E) == 0 && norm2_L2(E) == 0
+            @test zero(typeof(SV))(x) == 0
+            EA = WavePacketSum{1}(AbstractWavePacket{1}[])
+            @test EA(x) == 0 && integral(EA) == 0
+        end
+
+        @testset "inference" begin
+            # Sums of sums (stored in tuples) must be inferred, including the nested reductions
+            S = (G[1] + H[1]) + (G[2] + (H[2] + G[3]))
+            x = rand_x()
+            @test S(x) ≈ sum(g(x) for g in (G[1], H[1], G[2], H[2], G[3]))
+            @test is_inferred(S, x)
+            @test is_inferred(S, x[1])
+            @test is_inferred(integral, S)
+            @test is_inferred(dot_L2, S, S)
+            @test is_inferred(dot_L2, S, G[1])
+            @test is_inferred(dot_L2, H[1], S)
+            @test is_inferred(norm2_L2, S)
+            @test is_inferred(fourier, S)
+            @test is_inferred(convolution, S, G[1])
+            # (S * S itself has a huge type: 25 products of nested terms)
+            @test is_inferred(*, G[1] + H[1], G[2] + (H[2] + G[3]))
+            SGN = (G[1] + G[2]) + G[3]
+            @test is_inferred(dot_∇, SGN, SGN)
+            @test is_inferred(norm2_∇, SGN)
+            @test is_inferred(norm2_∇, SGN, SVector(0.3))
+            @test is_inferred(dot_∇, SGN, SGN, SVector(0.3))
+            @test is_inferred(dot_∇, G[1], SGN, SVector(0.3))
+            report_alloc("nested sums (evaluate, dot_L2, norm2_L2, norm2_∇)",
+                         alloc_of(evaluate, S, x) + alloc_of(dot_L2, S, S) + alloc_of(norm2_L2, S) + alloc_of(norm2_∇, SGN))
         end
     end
 end

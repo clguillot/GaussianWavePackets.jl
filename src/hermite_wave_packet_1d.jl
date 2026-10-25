@@ -242,7 +242,7 @@ function polynomial_product(H::HermiteFct1D{N}, P::SVector{NP, <:Number}, q::Rea
     Λ = hermite_discrete_transform(Φ .* Φ_P, H.z, H.q, Val(N1))
     return HermiteFct1D(Λ, H.z, H.q)
 end
-function polynomial_product(H::HermiteWavePacket1D, P::SVector{NP, <:Number}, q::RealOrNull=NullNumber()) where NP
+function polynomial_product(H::HermiteWavePacket1D{N, TΛ, <:Union{Real, Complex}}, P::SVector{NP, <:Number}, q::RealOrNull=NullNumber()) where{N, TΛ, NP}
     Hr = polynomial_product(HermiteFct1D(H.Λ, real(H.z), H.q), P, q)
     return HermiteWavePacket1D(Hr.Λ, H.z, H.q, H.p)
 end

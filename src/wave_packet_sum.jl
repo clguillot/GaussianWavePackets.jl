@@ -40,14 +40,15 @@ struct WavePacketSum{D, Ctype} <: AbstractWavePacket{D}
     function WavePacketSum{D}(g::AbstractWavePacket{D}...) where D
         return WavePacketSum{D}(g)
     end
-    function WavePacketSum(g::AbstractWavePacket{D}...) where D
-        return WavePacketSum{D}(g)
+    # (at least one term, so that D is always determined)
+    function WavePacketSum(g1::AbstractWavePacket{D}, g::AbstractWavePacket{D}...) where D
+        return WavePacketSum{D}((g1, g...))
     end
 end
 function WavePacketSum(g::AbstractVector{<:AbstractWavePacket{D}}) where D
     return WavePacketSum{D}(g)
 end
-function WavePacketSum(g::Tuple{Vararg{AbstractWavePacket{D}}}) where D
+function WavePacketSum(g::Tuple{AbstractWavePacket{D}, Vararg{AbstractWavePacket{D}}}) where D
     return WavePacketSum{D}(g)
 end
 
@@ -71,8 +72,8 @@ _sum_terms(f::F, g, acc) where F = sum(f, g; init=acc)
     CREATION
 =#
 
-function Base.:+(G::AbstractWavePacket{D}...) where D
-    return WavePacketSum{D}(G)
+function Base.:+(G1::AbstractWavePacket{D}, G::AbstractWavePacket{D}...) where D
+    return WavePacketSum{D}((G1, G...))
 end
 
 function Base.:-(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D

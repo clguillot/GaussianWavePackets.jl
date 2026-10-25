@@ -1,230 +1,68 @@
 
+# Real gaussians (the Gaussian alias): the operations themselves are tested with all the other
+# wave packets in test_gaussian_wave_packet.jl, this file checks the constructors and that the
+# operations which should give a Gaussian do
 function test_gaussian()
     @testset "Gaussian" begin
-        nb_reps = 1
-        M = 10.0
-        tol = 1e-6
-        int_tol = 1e-9
+        nb_reps = 5
+        tol = 1e-12
 
-        @testset "evaluate" begin
-            D = 3
+        @testset "constructors" begin
             err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                x = SVector{D}(4.0 .* (rand(D) .- 0.5))
+            for _ in 1:nb_reps
                 λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
+                a = 4 * rand() + 0.5
+                q = 4 * (rand() - 0.5)
+                x = 4 * (rand() - 0.5)
+                G = Gaussian(λ, a, q)
+                @test G isa Gaussian{1}
+                err = max(err, err_rel(G(x), λ * exp(-a * (x - q)^2 / 2)))
+                err = max(err, err_rel(Gaussian(λ, a)(x), λ * exp(-a * x^2 / 2)))
 
-                u = @. exp(-z/2 * (x - q)^2)
-                μ = λ * prod(u)
-                alloc += @allocated err = max(err, abs(G(x) - μ) / abs(μ))
+                D = 3
+                z = Diagonal(4 .* rand(SVector{D}) .+ 0.5)
+                qv = 4 .* (rand(SVector{D}) .- 0.5)
+                xv = 4 .* (rand(SVector{D}) .- 0.5)
+                G3 = Gaussian(λ, z, qv)
+                ref = λ * prod(@. exp(-z.diag / 2 * (xv - qv)^2))
+                err = max(err, err_rel(G3(xv), ref))
+                err = max(err, err_rel(Gaussian{D}(λ, Diagonal(Vector(z.diag)), Vector(qv))(xv), ref))
+                err = max(err, err_rel(Gaussian{D}(λ, Symmetric(Matrix(z)), Vector(qv))(xv), ref))
+                @test Gaussian{D}(λ, Symmetric(Matrix(z)), Vector(qv)) isa Gaussian{D}
             end
 
             @test err <= tol
-            report_alloc("evaluate", alloc)
         end
 
-        @testset "conjugate" begin
-            D = 3
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                x = SVector{D}(4.0 .* (rand(D) .- 0.5))
-                λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
-
-                alloc += @allocated Gc = conj(G)
-
-                err = max(err, abs(Gc(x) - conj(G(x))) / abs(Gc(x)))
+        @testset "closed operations" begin
+            for D in (1, 3), kind in (:diag, :sym)
+                G1 = Gaussian(rand() + 1im * rand(), rand_cov(Val(D), kind, false), rand_vec(Val(D), true))
+                G2 = Gaussian(rand(), rand_cov(Val(D), kind, false), rand_vec(Val(D), false))
+                @test G1 * G2 isa Gaussian{D}
+                @test (abs(G1) * G2).λ isa Float64                # real gaussians stay real
+                @test convolution(abs(G1), G2).λ isa Float64
+                @test convolution(G1, G2) isa Gaussian{D}
+                @test conj(G1) isa Gaussian{D}
+                @test abs(G1) isa Gaussian{D}
+                @test abs2(G1) isa Gaussian{D}
+                @test 2 * G1 isa Gaussian{D}
+                @test zero(G1) isa Gaussian{D}
+                @test !(fourier(G1) isa Gaussian)                 # the Fourier transform has a momentum
+                @test fourier(G2) isa Gaussian{D}                 # but not without q
+                x = rand(SVector{D})
+                @test abs(G1)(x) ≈ abs(G1(x))
+                @test abs2(G1)(x) ≈ abs2(G1(x))
             end
-
-            @test err <= tol
-            report_alloc("conjugate", alloc)
         end
 
-        @testset "product" begin
-            D = 3
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ1 = rand() + 1im * rand()
-                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q1 = SVector{D}(4 * (rand(D) .- 0.5))
-                G1 = Gaussian(λ1, z1, q1)
-
-                λ2 = rand() + 1im * rand()
-                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q2 = SVector{D}(4 * (rand(D) .- 0.5))
-                G2 = Gaussian(λ2, z2, q2)
-
-                f(x) = G1(x) * G2(x)
-                alloc += @allocated G = G1 * G2
-
-                for _=1:100
-                    x = SVector{D}(5 * (rand(D) .- 0.5))
-                    err = max(err, abs(f(x) - G(x)) / abs(f(x)))
-                end
-            end
-
-            @test err <= tol
-            report_alloc("product", alloc)
-        end
-
-        @testset "integral" begin
-            D = 2
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
-
-                I = complex_cubature(y -> G(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-                alloc += @allocated err = max(err, abs(I - integral(G)))
-            end
-
-            @test err <= tol
-            report_alloc("integral", alloc)
-        end
-
-        @testset "convolution" begin
-            D = 2
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ1 = rand() + 1im * rand()
-                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q1 = SVector{D}(4 * (rand(D) .- 0.5))
-                G1 = Gaussian(λ1, z1, q1)
-
-                λ2 = rand() + 1im * rand()
-                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q2 = SVector{D}(4 * (rand(D) .- 0.5))
-                G2 = Gaussian(λ2, z2, q2)
-
-                alloc += @allocated G = convolution(G1, G2)
-
-                x0 = 5.0 * (rand(D) .- 0.5)
-                I = complex_cubature(y -> G1(y) * G2(x0 - y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-                err = max(err, abs(I - G(x0)))
-            end
-
-            @test err <= tol
-            report_alloc("convolution", alloc)
-        end
-
-        @testset "dot L²" begin
-            D = 2
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ1 = rand() + 1im * rand()
-                z1 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q1 = SVector{D}(4 * (rand(D) .- 0.5))
-                G1 = Gaussian(λ1, z1, q1)
-
-                λ2 = rand() + 1im * rand()
-                z2 = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q2 = SVector{D}(4 * (rand(D) .- 0.5))
-                G2 = Gaussian(λ2, z2, q2)
-
-                I = complex_cubature(y -> conj(G1(y)) * G2(y), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-                alloc += @allocated err = max(err, abs(I - dot_L2(G1, G2)))
-            end
-
-            @test err <= tol
-            report_alloc("dot L²", alloc)
-        end
-
-        @testset "norm L²" begin
-            D = 3
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
-
-                alloc += @allocated err = max(err, abs(norm_L2(G) - sqrt(dot_L2(G, G))) / norm_L2(G))
-            end
-
-            @test err <= tol
-            report_alloc("norm L²", alloc)
-        end
-
-        @testset "Fourier" begin
-            D = 2
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                ξ = 5 * (rand(D) .- 0.5)
-                λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
-
-                alloc += @allocated Gf = fourier(G)
-
-                I = complex_cubature(y -> G(y) * cis(-dot(ξ, y)), [-M for _ in 1:D], [M for _ in 1:D]; abstol=int_tol)
-                err = max(err, abs(I - Gf(ξ)))
-            end
-
-            @test err <= tol
-            report_alloc("Fourier", alloc)
-        end
-
-        @testset "Inverse Fourier" begin
-            D = 3
-            err = 0.0
-            alloc = 0
-            for _=1:nb_reps
-                λ = rand() + 1im * rand()
-                z = Diagonal(SVector{D}((4 * rand(D) .+ 0.5)))
-                q = SVector{D}(4 * (rand(D) .- 0.5))
-                G = Gaussian(λ, z, q)
-                GF = fourier(G)
-
-                alloc += @allocated G_ = inv_fourier(GF)
-
-                for _=1:100
-                    ξ = 5 * (rand(D) .- 0.5)
-                    err = max(err, abs(G(ξ) - G_(ξ)))
-                end
-            end
-
-            @test err <= tol
-            report_alloc("Inverse Fourier", alloc)
-        end
-
-        @testset "type stability (Float32)" begin
-            D = 3
-
-            λ1 = rand(Float32)
-            z1 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-            q1 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-            G1 = Gaussian(λ1, z1, q1)
-
-            λ2 = rand(Float32)
-            z2 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-            q2 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-            G2 = Gaussian(λ2, z2, q2)
-
-            λ3 = rand(Float32)
-            z3 = Diagonal(SVector{D}((4 * rand(Float32, D) .+ 0.5f0)))
-            q3 = SVector{D}(4 * (rand(Float32, D) .- 0.5f0))
-            G3 = Gaussian(λ3, z3, q3)
-
-            G = convolution(G1 * G2, G3)
-            res = G(rand(Float32, D)) + integral(G) + norm_L2(G)
-            T_type = typeof(res)
-
-            @test T_type == Float32
+        @testset "display" begin
+            @test occursin("exp", sprint(show, Gaussian(1.0, 2.0, 0.5)))
+            @test !occursin("cis", sprint(show, Gaussian(1.0, 2.0, 0.5)))
+            @test occursin("cis", sprint(show, GaussianWavePacket(1.0, 2.0, 0.5, 1.0)))
+            s = sprint(show, GaussianWavePacket(1.0, Diagonal(SVector(1.0, 2.0)), SVector(0.1, 0.2), SVector(0.3, 0.4)))
+            @test occursin("q = ", s) && occursin("p = ", s)
+            @test !occursin("p = ", sprint(show, Gaussian(1.0, Diagonal(SVector(1.0, 2.0)), SVector(0.1, 0.2))))
+            @test occursin("Λ = ", sprint(show, HermiteFct1D(SVector(1.0, 2.0), 1.0)))
         end
     end
 end
