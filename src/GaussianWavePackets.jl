@@ -1,3 +1,10 @@
+"""
+    GaussianWavePackets
+
+Exact, allocation-free computations with Gaussian wave packets ([`GaussianWavePacket`](@ref),
+[`Gaussian`](@ref)), 1D Hermite wave packets ([`HermiteWavePacket1D`](@ref),
+[`HermiteFct1D`](@ref)) and their sums ([`WavePacketSum`](@ref)).
+"""
 module GaussianWavePackets
 
 using LinearAlgebra
@@ -27,7 +34,6 @@ export hermite_quadrature
 export truncate_to_gaussian
 export integral
 export ∫
-export evaluate
 export unitary_product
 export polynomial_product
 export fourier
