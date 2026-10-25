@@ -22,7 +22,7 @@ where $\lambda\in\mathbb C$, $z$ is a complex symmetric matrix with positive def
 The package is not registered. From the Julia package manager:
 
 ```julia
-]add GaussianWavePackets
+]add https://github.com/clguillot/GaussianWavePackets.jl
 ```
 
 It requires Julia 1.11 or later.
@@ -47,7 +47,7 @@ norm_L2(G)                   # ‖G‖₂
 inv_fourier(fourier(G))(0.5) # ≈ G(0.5)
 ```
 
-`q` and `p` are optional (a missing `p` gives a real-phase function, a missing `q` means `q = 0`). The alias `Gaussian` is a `GaussianWavePacket` *without* momentum and with a real `z`:
+`q` and `p` are optional (a missing `p` gives a real-phase function, a missing `q` means `q = 0`). They are then stored as `NullNumber`s (from [NullNumbers.jl](https://github.com/clguillot/NullNumbers.jl)), which are statically known to be zero, so that the corresponding computations are removed at compile time. The alias `Gaussian` is a `GaussianWavePacket` *without* momentum and with a real `z`:
 
 ```julia
 R = Gaussian(2.0, 1.5, 0.7)   # 2 exp(-1.5/2 (x-0.7)²)
@@ -66,8 +66,8 @@ G2(0.1, 0.2)                 # same thing
 # Plain arrays are also accepted, if the dimension is given explicitly
 G2 = GaussianWavePacket{2}(1.0, Symmetric([2.0 0.3; 0.3 1.0]), [0.0, 1.0], [0.5, 0.0])
 
-integral(G2, Tuple{2})       # integrates out the 2nd variable: a GaussianWavePacket in x₁
-evaluate(G2, SVector(0.7), Tuple{2})  # freezes x₂ = 0.7: a GaussianWavePacket in x₁
+integral(G2; dims=(2,))                 # integrates out the 2nd variable: a GaussianWavePacket in x₁
+evaluate(G2, SVector(0.7); dims=(2,))   # freezes x₂ = 0.7: a GaussianWavePacket in x₁
 ```
 
 Operations return new wave packets:
@@ -99,7 +99,7 @@ truncate_to_gaussian(H)                     # keeps the ψ₀ component, as a Ga
 HermiteWavePacket1D(G)                      # exact conversion of a 1D Gaussian
 ```
 
-The number of coefficients `N` is part of the type: products and convolutions grow it (`N₁ + N₂ - 1`), Fourier transforms preserve it.
+The number of coefficients `N` is part of the type: products and convolutions grow it (`N₁ + N₂ - 1`), Fourier transforms preserve it. It is never reduced automatically: `truncate(H, Val(K))` keeps the first `K` coefficients (the L² error is the norm of the coefficients which are removed).
 
 ### Sums
 
@@ -107,7 +107,7 @@ The number of coefficients `N` is part of the type: products and convolutions gr
 
 ```julia
 S = G + H                              # a WavePacketSum (here a Tuple of two terms)
-S(0.3) = G(0.3) + H(0.3)
+S(0.3)                                 # = G(0.3) + H(0.3)
 norm_L2(S)
 convolution(S, G)                      # sum of convolutions
 
@@ -144,7 +144,8 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 | `unitary_product` | product with a Gaussian phase | ✓ | ✓ | ✓ |
 | `polynomial_product` | product with a polynomial (1D) | ✓ | ✓ | ✓ |
 | `integral`, `∫` | integral over $\mathbb R^D$ | ✓ | ✓ | ✓ |
-| `integral(G, Tuple{i,…})` | integral over the listed variables | ✓ | | |
+| `integral(G; dims=(i,…))` | integral over the listed variables | ✓ | | ✓ ² |
+| `evaluate(G, x; dims=(i,…))` | evaluation along the listed variables only | ✓ | | ✓ ² |
 | `fourier`, `inv_fourier` | Fourier transforms | ✓ | ✓ | ✓ |
 | `convolution` | convolution product | ✓ | ✓ | ✓ |
 | `dot_L2`, `norm2_L2`, `norm_L2` | $L^2$ inner product and norm | ✓ | ✓ | ✓ |
@@ -152,12 +153,17 @@ where $H_n$ is the (physicists') Hermite polynomial. For fixed $(z,q,p)$ they ar
 | `abs`, `abs2` | modulus and squared modulus (a `Gaussian`) | ✓ | | |
 | `coulomb_integral` | $\int G(x)/\lvert x\rvert\,dx$ for an isotropic 3D packet | ✓ | | |
 | `truncate_to_gaussian` | Gaussian part of the function | ✓ | ✓ | |
+| `truncate(H, Val(K))` | keeps the first `K` Hermite coefficients | | ✓ | |
 | `zero`, `copy`, `show` | | ✓ | ✓ | ✓ |
 
 ¹ Provided that all the terms support it.
+² For sums of `GaussianWavePacket`s.
 
 ## Design notes
 
 * **Complex variance.** The real part of `z` gives the Gaussian envelope and the Hermite scale; its imaginary part is treated as a (chirp) phase, so that the $\psi_n$ stay orthonormal.
 * **Exactness.** Hermite products and $L^2$ products are computed exactly (up to rounding) with Gauss–Hermite quadrature rules sized for the polynomial degrees involved. The transform matrices are computed once, in extended precision, for each floating-point type and each size `N`, at compile time: the first use of a new `N` is therefore slower than the following ones.
 * **Floating-point types.** `Float32` and `Float64` (and the complex counterparts) are supported and preserved by the operations.
+* **Dimension selectors.** `dims` is a tuple of distinct integers. The result is type stable when `dims` is a constant (constant propagation); otherwise use `integral(G, Val(dims))` and `evaluate(G, x, Val(dims))`.
+* **Plane waves.** A `GaussianWavePacket` whose `z` is a `NullNumber` represents the plane wave $\lambda e^{ip\cdot x}$. It can be evaluated, multiplied by other wave packets and paired with an integrable one (`dot_L2`, `dot_∇`), but `integral`, `fourier`, the norms, etc. throw an `ArgumentError`.
+* **Coulomb integral.** `coulomb_integral` requires an isotropic `z` (a multiple of the identity, `Diagonal` or `Symmetric`).

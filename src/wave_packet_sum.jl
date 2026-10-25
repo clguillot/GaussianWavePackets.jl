@@ -1,3 +1,8 @@
+# Checks, at the type level whenever possible, that all the terms are wave packets of dimension D
+_terms_type_ok(::Type{Ctype}, ::Val{D}) where{Ctype<:Tuple, D} = all(T -> T <: AbstractWavePacket{D}, fieldtypes(Ctype))
+_terms_type_ok(::Type{Ctype}, ::Val{D}) where{Ctype<:AbstractArray, D} = eltype(Ctype) <: AbstractWavePacket{D}
+_terms_type_ok(::Type, ::Val) = false
+
 """
     WavePacketSum(g1, g2, ...)
     WavePacketSum(container)
@@ -21,12 +26,6 @@ V = WavePacketSum([GaussianWavePacket(1.0, 1.0, 0.1k) for k in 1:50])
 S(0.3), integral(V), norm_L2(S)
 ```
 """
-
-# Checks, at the type level whenever possible, that all the terms are wave packets of dimension D
-_terms_type_ok(::Type{Ctype}, ::Val{D}) where{Ctype<:Tuple, D} = all(T -> T <: AbstractWavePacket{D}, fieldtypes(Ctype))
-_terms_type_ok(::Type{Ctype}, ::Val{D}) where{Ctype<:AbstractArray, D} = eltype(Ctype) <: AbstractWavePacket{D}
-_terms_type_ok(::Type, ::Val) = false
-
 struct WavePacketSum{D, Ctype} <: AbstractWavePacket{D}
     g::Ctype
 

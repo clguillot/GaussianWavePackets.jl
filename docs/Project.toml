@@ -1,0 +1,13 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+GaussianWavePackets = "0c63080c-9546-48d9-913a-8575c4379365"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+Documenter = "1"
+LinearAlgebra = "1"
+StaticArrays = "1"
+
+[sources]
+GaussianWavePackets = {path = ".."}

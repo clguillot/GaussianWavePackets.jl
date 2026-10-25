@@ -36,7 +36,7 @@ A single number `λ` can be given instead of `Λ` (then `N = 1`).
 `q` and `p` are optional (they are then stored as `NullNumber`s, statically known to be zero).
 
 The number of coefficients `N` is part of the type: products and convolutions grow it
-(`N₁ + N₂ - 1`), and it is never reduced automatically (see [`truncate`](@ref)).
+(`N₁ + N₂ - 1`), and it is never reduced automatically (see `truncate(H, Val(K))`).
 
 See also [`HermiteFct1D`](@ref), [`GaussianWavePacket`](@ref).
 """
