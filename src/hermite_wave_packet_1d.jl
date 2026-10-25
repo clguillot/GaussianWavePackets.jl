@@ -178,7 +178,7 @@ end
 function evaluate(H::HermiteWavePacket1D, x::Number)
     a = real(H.z)
     y = x - H.q
-    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, -a/2*y^2)
+    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, exp(-a/2*y^2))
     return sqrt(sqrt(invπ*a)) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
 end
 """
@@ -190,7 +190,7 @@ Evaluates the Hermite wave packet `H` at all the points of `x`, and returns the 
 function evaluate_grid(H::HermiteWavePacket1D, x::SVector{M, <:Number}) where M
     a = real(H.z)
     y = x .- H.q
-    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, @. -a/2*y^2)
+    val = clenshaw_hermite_eval(H.Λ, sqrt(2a), y, @. exp(-a/2*y^2))
     return @. sqrt(sqrt(invπ*a)) * val * cis(-imagz(H.z)/2*y^2) * cis(x*H.p)
 end
 # Evaluates a hermite wave packet at x
@@ -253,7 +253,7 @@ end
         h₀(0) = π^(-1/4)    hₙ₊₂(0) = -√((n+1)/(n+2)) hₙ(0)
 =#
 function _hermite_functions_sum(Λ::SVector{N}, t::Real) where N
-    return sqrt(sqrt(invπ * one(t))) * clenshaw_hermite_eval(Λ, sqrt(2 * one(t)), t, -t^2/2)
+    return sqrt(sqrt(invπ * one(t))) * clenshaw_hermite_eval(Λ, sqrt(2 * one(t)), t, exp(-t^2/2))
 end
 function _hermite_functions_sum(Λ::SVector{N, TΛ}, ::NullNumber) where{N, TΛ}
     T = fitting_float(TΛ)

@@ -362,10 +362,9 @@ Base.abs2(G::GaussianWavePacket) = Gaussian(abs2(G.λ), 2*real(G.z), G.q)
 @inline Base.@constprop :aggressive function integral(G::GaussianWavePacket{D}; dims=nothing) where D
     if dims === nothing
         _check_integrable(G)
-        T = fitting_float(G)
         U = special_cholesky(G.z)
         r = transpose(U) \ G.p
-        return G.λ * (T(sqrt2π)^D / prod(diag(U))) * cis(_bdot(G.p, G.q)) * exp(-sum(r.^2) / 2)
+        return G.λ / prod(invsqrt2π * diag(U)) * cis(_bdot(G.p, G.q)) * exp(-sum(r.^2) / 2)
     else
         return integral(G, Val(dims))
     end
@@ -432,13 +431,12 @@ end
 =#
 function fourier(G::GaussianWavePacket{D}) where D
     _check_integrable(G)
-    T = fitting_float(G)
     U = special_cholesky(G.z)
     U_inv = _upper_tri(U \ Diagonal(ones(SVector{D, Bool})))
     z_tf = _symmetric(U_inv * transpose(U_inv))
     q_tf = G.p
     p_tf = -G.q
-    λ_tf = G.λ * (T(sqrt2π)^D / prod(diag(U))) * cis(_bdot(G.p, G.q))
+    λ_tf = G.λ / prod(invsqrt2π * diag(U)) * cis(_bdot(G.p, G.q))
     return GaussianWavePacket(λ_tf, z_tf, q_tf, p_tf)
 end
 
@@ -449,13 +447,12 @@ end
 =#
 function inv_fourier(G::GaussianWavePacket{D}) where D
     _check_integrable(G)
-    T = fitting_float(G)
     U = special_cholesky(G.z)
     U_inv = _upper_tri(U \ Diagonal(ones(SVector{D, Bool})))
     z_tf = _symmetric(U_inv * transpose(U_inv))
     q_tf = -G.p
     p_tf = G.q
-    λ_tf = G.λ * (T(invsqrt2π)^D / prod(diag(U))) * cis(_bdot(G.p, G.q))
+    λ_tf = G.λ / prod(sqrt2π * diag(U)) * cis(_bdot(G.p, G.q))
     return GaussianWavePacket(λ_tf, z_tf, q_tf, p_tf)
 end
 
@@ -464,16 +461,16 @@ function convolution(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where
     return inv_fourier(fourier(G1) * fourier(G2))
 end
 
-# The inverse of a covariance matrix Z (as a plain matrix), and the product of the diagonal
-# entries of its (analytic) Cholesky factor, i.e. the branch of sqrt(det(Z)) with a positive real part
-function _inv_sqrtdet(Z::Diagonal)
+# The inverse of a covariance matrix Z (as a plain matrix), and the diagonal of its (analytic)
+# Cholesky factor (whose product is the branch of sqrt(det(Z)) with a positive real part)
+function _inv_diagchol(Z::Diagonal)
     U = special_cholesky(Z)
-    return Diagonal(inv.(Z.diag)), prod(U.diag)
+    return Diagonal(inv.(Z.diag)), U.diag
 end
-function _inv_sqrtdet(Z::Symmetric{<:Number, <:SMatrix{D, D}}) where D
+function _inv_diagchol(Z::Symmetric{<:Number, <:SMatrix{D, D}}) where D
     U = special_cholesky(Z)
     U_inv = U \ Diagonal(ones(SVector{D, Bool}))
-    return SMatrix(U_inv * transpose(U_inv)), prod(diag(U))
+    return SMatrix(U_inv * transpose(U_inv)), diag(U)
 end
 
 #=
@@ -485,7 +482,6 @@ end
 =#
 function _overlap(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     _check_integrable(G1, G2)
-    T = fitting_float(G1, G2)
     z1c = conj(G1.z)
     U = special_cholesky(_cov_add(z1c, G2.z))
     d = G2.q - G1.q
@@ -493,7 +489,7 @@ function _overlap(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     k = im * Δp - z1c * d
     r = transpose(U) \ k
     E = (sum(r.^2) - _quad(d, z1c)) / 2 + im * _bdot(Δp, G2.q)
-    I0 = conj(G1.λ) * G2.λ * (T(sqrt2π)^D / prod(diag(U))) * exp(E)
+    I0 = conj(G1.λ) * G2.λ / prod(invsqrt2π * diag(U)) * exp(E)
     return I0, U, r, d
 end
 
@@ -511,17 +507,16 @@ norm2_L2(G::GaussianWavePacket) = integral(abs2(G))
 =#
 function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     _check_integrable(G1, G2)
-    T = fitting_float(G1, G2)
     z1c = conj(G1.z)
     # Same computation of I₀ as in _overlap, but Z⁻¹ is computed explicitly (which is faster than
     # triangular solves here, since it is needed for the trace anyway)
-    Zinv, sqrtdet = _inv_sqrtdet(_cov_add(z1c, G2.z))
+    Zinv, dU = _inv_diagchol(_cov_add(z1c, G2.z))
     d = G2.q - G1.q
     Δp = G2.p - G1.p
     k = im * Δp - z1c * d
     m = Zinv * k
     E = (_bdot(k, m) - _quad(d, z1c)) / 2 + im * _bdot(Δp, G2.q)
-    I0 = conj(G1.λ) * G2.λ * (T(sqrt2π)^D / sqrtdet) * exp(E)
+    I0 = conj(G1.λ) * G2.λ / prod(invsqrt2π * dU) * exp(E)
     Am = -(z1c * (m + d)) - im * G1.p
     Bm = -(G2.z * m) + im * G2.p
     return I0 * (tr(Zinv * (z1c * G2.z)) + _bdot(Am, Bm))
@@ -546,10 +541,9 @@ _tr_bab(R, b::Symmetric{<:Real, <:SMatrix{D, D}}) where D = sum(abs2, transpose(
 =#
 function norm2_∇(G::GaussianWavePacket{D}) where D
     _check_integrable(G)
-    T = fitting_float(G)
     a = real(G.z)
     R = special_cholesky(a)
-    nrm2 = abs2(G.λ) * (T(sqrtπ)^D / prod(diag(R)))
+    nrm2 = abs2(G.λ) / prod(invsqrtπ * diag(R))
     return nrm2 * ((tr(a) + _tr_bab(R, _imagz(G.z))) / 2 + sum(abs2, G.p))
 end
 # Computes ∫|(D-c)G|^2

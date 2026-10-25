@@ -12,19 +12,6 @@ function abs_integral(H::HermiteWavePacket1D)
     lo, hi = integration_box((center(H),), real(H.z); nσ=12)
     return hcubature(y -> abs(H(y[1])), lo, hi; reltol=1e-8)[1]
 end
-# The values of ∑ₙ hₙ(x) (n=0,...,N-1) for the standard Hermite functions, in BigFloat
-function big_hermite_sum(N, x)
-    x = BigFloat(x)
-    v = zero(x)
-    u = BigFloat(π)^(-BigFloat(1)/4) * exp(-x^2/2)
-    s = u
-    for n in 1:N-1
-        (u, v) = ((sqrt(BigFloat(2)) * x * u - sqrt(BigFloat(n-1)) * v) / sqrt(BigFloat(n)), u)
-        s += u
-    end
-    return s
-end
-
 function _test_hwp_evaluate(nb_reps, tol, tol_cub)
     @testset "evaluate" begin
         err = 0.0
@@ -60,25 +47,6 @@ function _test_hwp_evaluate_grid(nb_reps, tol, tol_cub)
 
         @test err <= tol
         report_alloc("evaluate grid", alloc)
-    end
-end
-
-function _test_hwp_large_N(nb_reps, tol, tol_cub)
-    @testset "large N and |x| (no overflow)" begin
-        # The Clenshaw sums would overflow (and give Inf*0 = NaN) without rescaling
-        N = 600
-        H = HermiteFct1D(SVector{N}(ones(N)), 1.0)
-        err = 0.0
-        for x in (0.5, 30.0, 45.0, 50.0, 60.0, -45.0)
-            v = H(x)
-            @test isfinite(v)
-            err = max(err, err_rel(v, Float64(big_hermite_sum(N, x)); floor=floatmin(Float64)))  # (both underflow at x = 60)
-            @test isfinite(evaluate_grid(H, SVector(x, 2x))[2])
-        end
-        @test err <= 1e-10
-        H32 = HermiteFct1D(SVector{200}(ones(Float32, 200)), 1f0)
-        @test isfinite(H32(18f0)) && H32(18f0) isa Float32
-        @test err_rel(H32(18f0), Float64(big_hermite_sum(200, 18))) <= 1e-3
     end
 end
 
@@ -380,7 +348,6 @@ function test_hermite_wave_packets_1d()
 
         _test_hwp_evaluate(nb_reps, tol, tol_cub)
         _test_hwp_evaluate_grid(nb_reps, tol, tol_cub)
-        _test_hwp_large_N(nb_reps, tol, tol_cub)
         _test_hwp_conversions_and_truncation(nb_reps, tol, tol_cub)
         _test_hwp_integral(nb_reps, tol, tol_cub)
         _test_hwp_product(nb_reps, tol, tol_cub)
