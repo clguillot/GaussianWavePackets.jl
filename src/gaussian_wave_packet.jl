@@ -179,11 +179,11 @@ end
 
 # The imaginary part of a covariance matrix (NullNumbers if it is real), with the same structure
 _imagz(z::Diagonal) = Diagonal(imagz.(z.diag))
-_imagz(z::Symmetric) = Symmetric(imagz.(parent(z)), Symbol(z.uplo))
+_imagz(z::Symmetric) = z.uplo == 'U' ? Symmetric(imagz.(parent(z)), :U) : Symmetric(imagz.(parent(z)), :L)
 
 # Sum of two covariance matrices (dense as soon as one of them is dense)
-_cov_add(z1::Diagonal, z2::Diagonal) = z1 + z2
-_cov_add(z1::Symmetric, z2::Symmetric) = Symmetric(SMatrix(parent(z1)) + SMatrix(parent(z2)))
+# (the methods must be at least as specific as CovMat, otherwise the last one is always selected)
+_cov_add(z1::SDiagonal{D}, z2::SDiagonal{D}) where D = Diagonal(z1.diag + z2.diag)
 _cov_add(z1::CovMat{D}, z2::CovMat{D}) where D = Symmetric(SMatrix{D, D}(z1) + SMatrix{D, D}(z2))
 
 # yᵀzy and xᵀy (without complex conjugation)
@@ -460,16 +460,49 @@ function convolution(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where
     return inv_fourier(fourier(G1) * fourier(G2))
 end
 
+# The inverse of a covariance matrix Z (as a plain matrix), and the product of the diagonal
+# entries of its (analytic) Cholesky factor, i.e. the branch of sqrt(det(Z)) with a positive real part
+function _inv_sqrtdet(Z::Diagonal)
+    U = special_cholesky(Z)
+    return Diagonal(inv.(Z.diag)), prod(U.diag)
+end
+function _inv_sqrtdet(Z::Symmetric{<:Number, <:SMatrix{D, D}}) where D
+    U = special_cholesky(Z)
+    U_inv = U \ Diagonal(ones(SVector{D, Bool}))
+    return SMatrix(U_inv * transpose(U_inv)), prod(diag(U))
+end
+
+#=
+    Computes the integral I₀ of
+        conj(G1)G2 = λ̄₁λ₂ exp(-uᵀZu/2 + kᵀu + c₀)  (u = x - q₂, Z = z̄₁ + z₂)
+    where k = i(p₂ - p₁) - z̄₁(q₂ - q₁) and c₀ = -(q₂ - q₁)ᵀz̄₁(q₂ - q₁)/2 + i(p₂ - p₁)⋅q₂, that is
+        I₀ = λ̄₁λ₂ (2π)^(D/2) det(Z)^(-1/2) exp(kᵀZ⁻¹k/2 + c₀)
+    Also returns the Cholesky factor U of Z (UᵀU = Z), r = U⁻ᵀk and q₂ - q₁
+=#
+function _overlap(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+    _check_integrable(G1)
+    _check_integrable(G2)
+    T = fitting_float(G1, G2)
+    z1c = conj(G1.z)
+    U = special_cholesky(_cov_add(z1c, G2.z))
+    d = G2.q - G1.q
+    Δp = G2.p - G1.p
+    k = im * Δp - z1c * d
+    r = transpose(U) \ k
+    E = (sum(r.^2) - _quad(d, z1c)) / 2 + im * _bdot(Δp, G2.q)
+    I0 = conj(G1.λ) * G2.λ * (T(sqrt2π)^D / prod(diag(U))) * exp(E)
+    return I0, U, r, d
+end
+
 # Computes the L² product of two gaussian wave packets
-dot_L2(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D = integral(conj(G1) * G2)
+dot_L2(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D = first(_overlap(G1, G2))
 # Computes the square L² norm of a gaussian wave packet
 norm2_L2(G::GaussianWavePacket) = integral(abs2(G))
 
 #=
     Computes ∫<∇G1,∇G2> (where <,> is the hermitian product in ℂᴰ)
-    Since ∇Gₖ = (-zₖ(x-qₖ) + ipₖ)Gₖ, the integrand is a quadratic polynomial times
-        conj(G1)G2 = λ̄₁λ₂ exp(-uᵀZu/2 + kᵀu + c₀)  (u = x - q₂, Z = z̄₁ + z₂)
-    whose integral I₀, mean m = Z⁻¹k and covariance Z⁻¹ are known in closed form:
+    Since ∇Gₖ = (-zₖ(x-qₖ) + ipₖ)Gₖ, the integrand is a quadratic polynomial times conj(G1)G2,
+    whose integral I₀, mean m = Z⁻¹k and covariance Z⁻¹ are known in closed form (see _overlap):
         ∫<∇G1,∇G2> = I₀ (tr(z̄₁z₂Z⁻¹) + A(m)ᵀB(m))
     where A(u) = -z̄₁(u + q₂ - q₁) - ip₁ and B(u) = -z₂u + ip₂.
 =#
@@ -478,19 +511,18 @@ function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     _check_integrable(G2)
     T = fitting_float(G1, G2)
     z1c = conj(G1.z)
-    z2 = G2.z
-    Z = _cov_add(z1c, z2)
-    U = special_cholesky(Z)
+    # Same computation of I₀ as in _overlap, but Z⁻¹ is computed explicitly (which is faster than
+    # triangular solves here, since it is needed for the trace anyway)
+    Zinv, sqrtdet = _inv_sqrtdet(_cov_add(z1c, G2.z))
     d = G2.q - G1.q
-    k = im * (G2.p - G1.p) - z1c * d
-    r = transpose(U) \ k
-    m = U \ r
-    E = (sum(r.^2) - _quad(d, z1c)) / 2 + im * _bdot(G2.p - G1.p, G2.q)
-    I0 = conj(G1.λ) * G2.λ * (T(sqrt2π)^D / prod(diag(U))) * exp(E)
+    Δp = G2.p - G1.p
+    k = im * Δp - z1c * d
+    m = Zinv * k
+    E = (_bdot(k, m) - _quad(d, z1c)) / 2 + im * _bdot(Δp, G2.q)
+    I0 = conj(G1.λ) * G2.λ * (T(sqrt2π)^D / sqrtdet) * exp(E)
     Am = -(z1c * (m + d)) - im * G1.p
-    Bm = -(z2 * m) + im * G2.p
-    tr_term = tr(U \ (transpose(U) \ (z1c * z2)))
-    return I0 * (tr_term + _bdot(Am, Bm))
+    Bm = -(G2.z * m) + im * G2.p
+    return I0 * (tr(Zinv * (z1c * G2.z)) + _bdot(Am, Bm))
 end
 # Computes ∫<(D-c)G1,(D-c)G2> (where <,> is the hermitian product in ℂᴰ, and D=-i∇)
 function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}) where D
@@ -499,8 +531,24 @@ function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, c::Abstra
                  GaussianWavePacket(G2.λ, G2.z, G2.q, G2.p - cs))
 end
 
-# Computes ∫|∇G|^2
-norm2_∇(G::GaussianWavePacket) = real(dot_∇(G, G))
+# tr(b a⁻¹ b) where a = RᵀR (b real symmetric, possibly made of NullNumbers)
+_tr_bab(R, ::Union{Diagonal{NullNumber}, Symmetric{NullNumber}}) = false
+_tr_bab(R::Diagonal, b::Diagonal) = sum((b.diag ./ R.diag).^2)
+_tr_bab(R, b::Symmetric{<:Real, <:SMatrix{D, D}}) where D = sum(abs2, transpose(R) \ SMatrix{D, D}(b))
+
+#=
+    Computes ∫|∇G|^2
+    With z = a + ib, this is the case G1 = G2 of dot_∇, where Z = 2a is real and m = 0:
+        ∫|∇G|^2 = ‖G‖² (tr(a)/2 + tr(ba⁻¹b)/2 + |p|²)
+=#
+function norm2_∇(G::GaussianWavePacket{D}) where D
+    _check_integrable(G)
+    T = fitting_float(G)
+    a = real(G.z)
+    R = special_cholesky(a)
+    nrm2 = abs2(G.λ) * (T(sqrtπ)^D / prod(diag(R)))
+    return nrm2 * ((tr(a) + _tr_bab(R, _imagz(G.z))) / 2 + sum(abs2, G.p))
+end
 # Computes ∫|(D-c)G|^2
 function norm2_∇(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}) where D
     cs = SVector{D}(c)
