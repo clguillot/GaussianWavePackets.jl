@@ -61,9 +61,10 @@ _terms(G::WavePacketSum) = G.g
     and does not rely on Base.sum (whose inference gives up when sums of closures are nested,
     as happens for sums of sums)
 =#
-@inline _sum_terms(f, ::Tuple{}, acc) = acc
-@inline _sum_terms(f, g::Tuple, acc) = _sum_terms(f, Base.tail(g), acc + f(first(g)))
-_sum_terms(f, g, acc) = sum(f, g; init=acc)
+# (f::F forces the specialization on f, which Julia does not do for a function which is only passed through)
+@inline _sum_terms(f::F, ::Tuple{}, acc) where F = acc
+@inline _sum_terms(f::F, g::Tuple, acc) where F = _sum_terms(f, Base.tail(g), acc + f(first(g)))
+_sum_terms(f::F, g, acc) where F = sum(f, g; init=acc)
 
 
 #=
@@ -121,16 +122,20 @@ end
 
 # Type of the numbers used by the terms (when it can be deduced from the type of the sum)
 # (Bool is neutral for promote_type among the number types, and makes the empty sums work)
-function core_type(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:AbstractArray}
+# These functions of types are declared :foldable, so that the compiler evaluates them at compile time:
+# otherwise, the inference of the recursive calls for nested sums is given up (and the result is Any)
+Base.@assume_effects :foldable function core_type(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:AbstractArray}
     return promote_type(Bool, core_type(eltype(Ctype)))
 end
-function core_type(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:Tuple}
-    return promote_type(Bool, core_type.(fieldtypes(Ctype))...)
+Base.@assume_effects :foldable function core_type(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:Tuple}
+    return promote_type(Bool, map(core_type, fieldtypes(Ctype))...)
 end
 # Checks that the types of all the terms (including those of nested sums) are fully known
 _concrete_terms(::Type{T}) where T = true
-_concrete_terms(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:AbstractArray} = isconcretetype(eltype(Ctype)) && _concrete_terms(eltype(Ctype))
-_concrete_terms(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:Tuple} = all(_concrete_terms, fieldtypes(Ctype))
+Base.@assume_effects :foldable _concrete_terms(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:AbstractArray} =
+    isconcretetype(eltype(Ctype)) && _concrete_terms(eltype(Ctype))
+Base.@assume_effects :foldable _concrete_terms(::Type{WavePacketSum{D, Ctype}}) where{D, Ctype<:Tuple} =
+    all(_concrete_terms, fieldtypes(Ctype))
 # If the type of the terms is not known (abstract element type), it is computed from the terms themselves
 function core_type(G::WavePacketSum)
     if _concrete_terms(typeof(G))
@@ -151,12 +156,19 @@ end
     GaussianWavePacket), and returns the sum of the results
 =#
 @inline Base.@constprop :aggressive function evaluate(G::WavePacketSum{D}, x::AbstractVector{<:Number}; dims=nothing) where D
-    if dims === nothing || length(dims) == D
-        xs = dims === nothing ? x : SVector{D}(x)[SVector{D}(invperm(collect(dims)))]
+    if dims === nothing
         s = zero(promote_type(core_type(G), eltype(x)))
-        return _sum_terms(g -> evaluate(g, xs), G.g, s)
+        return _sum_terms(g -> evaluate(g, x), G.g, s)
     else
-        return WavePacketSum(map(g -> evaluate(g, x; dims=dims), G.g))
+        return evaluate(G, x, Val(dims))
+    end
+end
+function evaluate(G::WavePacketSum{D}, x::AbstractVector{<:Number}, ::Val{dims}) where{D, dims}
+    if length(dims) == D
+        s = zero(promote_type(core_type(G), eltype(x)))
+        return _sum_terms(g -> evaluate(g, x, Val(dims)), G.g, s)
+    else
+        return WavePacketSum(map(g -> evaluate(g, x, Val(dims)), G.g))
     end
 end
 function evaluate(G::WavePacketSum{1}, x::Number)
@@ -223,11 +235,19 @@ end
     GaussianWavePacket), and the result is the sum of the partial integrals of the terms
 =#
 @inline Base.@constprop :aggressive function integral(G::WavePacketSum{D}; dims=nothing) where D
-    if dims === nothing || length(dims) == D
+    if dims === nothing
         s = zero(core_type(G))
         return _sum_terms(integral, G.g, s)
     else
-        return WavePacketSum(map(g -> integral(g; dims=dims), G.g))
+        return integral(G, Val(dims))
+    end
+end
+function integral(G::WavePacketSum{D}, ::Val{dims}) where{D, dims}
+    if length(dims) == D
+        s = zero(core_type(G))
+        return _sum_terms(g -> integral(g, Val(dims)), G.g, s)
+    else
+        return WavePacketSum(map(g -> integral(g, Val(dims)), G.g))
     end
 end
 
@@ -247,29 +267,29 @@ end
 =#
 
 # Computes ∑ₖₗ f(G1[k], G2[l])
-function _all_terms(f, G1::AbstractWavePacket, G2::AbstractWavePacket)
+function _all_terms(f::F, G1::AbstractWavePacket, G2::AbstractWavePacket) where F
     s = zero(promote_type(core_type(G1), core_type(G2)))
     g2_list = _terms(G2)
     return _sum_terms(g1 -> _sum_terms(g2 -> f(g1, g2), g2_list, s), _terms(G1), s)
 end
 # Computes ∑ₖ real(f(G[k]))
-function _diagonal_terms(f, G::AbstractWavePacket)
+function _diagonal_terms(f::F, G::AbstractWavePacket) where F
     s = zero(real(core_type(G)))
     return _sum_terms(g -> real(f(g)), _terms(G), s)
 end
 # Computes ∑ₖ<ₗ real(f(G[k], G[l]))
-function _cross_terms(f, G::AbstractWavePacket)
+function _cross_terms(f::F, G::AbstractWavePacket) where F
     z = zero(real(core_type(G)))
     return _cross_terms(f, _terms(G), z, z)
 end
 # (a tuple is handled recursively, which is type stable even if the terms are of different types)
-_cross_terms(f, ::Tuple{}, acc, z) = acc
-function _cross_terms(f, g_list::Tuple, acc, z)
+_cross_terms(f::F, ::Tuple{}, acc, z) where F = acc
+function _cross_terms(f::F, g_list::Tuple, acc, z) where F
     g, rest = first(g_list), Base.tail(g_list)
     return _cross_terms(f, rest, _sum_terms(h -> real(f(g, h)), rest, acc), z)
 end
 # (arrays: explicit indexing over the pairs k < l)
-function _cross_terms(f, g_list::AbstractArray, acc, z)
+function _cross_terms(f::F, g_list::AbstractArray, acc, z) where F
     idx = LinearIndices(g_list)
     n = length(idx)
     for a in 1:n, b in a+1:n
@@ -278,12 +298,12 @@ function _cross_terms(f, g_list::AbstractArray, acc, z)
     return acc
 end
 # (any other container)
-function _cross_terms(f, g_list, acc, z)
+function _cross_terms(f::F, g_list, acc, z) where F
     return acc + sum(real(f(g1, g2)) for (k, g1) in enumerate(g_list) for g2 in Iterators.drop(g_list, k); init=z)
 end
 # Computes ∑ₖ f_norm(G[k]) + 2 ∑ₖ<ₗ real(f_dot(G[k], G[l]))
 #   which is the squared norm of ∑ₖG[k] if f_norm(g) and f_dot(g1, g2) are the squared norm of g and the inner product of g1 and g2
-function _norm2_terms(f_norm, f_dot, G::AbstractWavePacket)
+function _norm2_terms(f_norm::F1, f_dot::F2, G::AbstractWavePacket) where{F1, F2}
     return _diagonal_terms(f_norm, G) + 2 * _cross_terms(f_dot, G)
 end
 
@@ -301,21 +321,22 @@ norm2_L2(G::WavePacketSum) = _norm2_terms(norm2_L2, dot_L2, G)
 
 #=
     Computes ∫<(D-c)G1,(D-c)G2> where D = -i∇ and at least one of the arguments is a sum
-    (the optional argument c is forwarded to each term, see dot_∇ for GaussianWavePacket)
+    (D-c)G = exp(ic⋅x) D(exp(-ic⋅x)G), so that c is handled by shifting the momentum of each term.
+    The functions are passed directly (and not through closures), so that the recursive calls
+    for nested sums are inferred
 =#
-function dot_∇(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c...) where D
-    return _all_terms((g1, g2) -> dot_∇(g1, g2, c...), G1, G2)
-end
-function dot_∇(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c...) where D
-    return _all_terms((g1, g2) -> dot_∇(g1, g2, c...), G1, G2)
-end
-function dot_∇(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c...) where D
-    return _all_terms((g1, g2) -> dot_∇(g1, g2, c...), G1, G2)
-end
+_shift_p(G::GaussianWavePacket{D}, c::AbstractVector) where D = GaussianWavePacket(G.λ, G.z, G.q, G.p - SVector{D}(c))
+_shift_p(G::WavePacketSum{D}, c::AbstractVector) where D = WavePacketSum{D}(map(g -> _shift_p(g, c), G.g))
+
+dot_∇(G1::WavePacketSum{D}, G2::WavePacketSum{D}) where D = _all_terms(dot_∇, G1, G2)
+dot_∇(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}) where D = _all_terms(dot_∇, G1, G2)
+dot_∇(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}) where D = _all_terms(dot_∇, G1, G2)
+dot_∇(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector) where D = dot_∇(_shift_p(G1, c), _shift_p(G2, c))
+dot_∇(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector) where D = dot_∇(_shift_p(G1, c), _shift_p(G2, c))
+dot_∇(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector) where D = dot_∇(_shift_p(G1, c), _shift_p(G2, c))
 
 #=
     Computes the squared homogeneous H1 norm ∫|(D-c)G|² of a sum
 =#
-function norm2_∇(G::WavePacketSum, c...)
-    return _norm2_terms(g -> norm2_∇(g, c...), (g1, g2) -> dot_∇(g1, g2, c...), G)
-end
+norm2_∇(G::WavePacketSum) = _norm2_terms(norm2_∇, dot_∇, G)
+norm2_∇(G::WavePacketSum, c::AbstractVector) = norm2_∇(_shift_p(G, c))

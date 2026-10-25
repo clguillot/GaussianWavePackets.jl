@@ -171,6 +171,6 @@ function hermite_quadrature(a::Real, q::Union{Real, NullNumber}, ::Val{N}) where
     x0, w0, _ = hermite_primitive_discrete_transform(T, Val(N))
 
     c = inv(sqrt(a))
-    q_broad = SVector{N}(ntuple(_ -> q, N)...)
+    q_broad = SVector{N}(ntuple(_ -> q, Val(N)))
     return c.*x0.+q_broad, c.*w0
 end

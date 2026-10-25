@@ -194,6 +194,10 @@ _cov_add(z1::CovMat{D}, z2::CovMat{D}) where D = Symmetric(SMatrix{D, D}(z1) + S
 _check_integrable(::GaussianWavePacket{D, <:Number, NullNumber}) where D =
     throw(ArgumentError("This operation requires an integrable wave packet, but z is a NullNumber (plane wave)"))
 _check_integrable(::GaussianWavePacket) = nothing
+# Same for conj(G1)G2 (which is integrable as soon as one of them is)
+_check_integrable(::GaussianWavePacket{D, <:Number, NullNumber}, ::GaussianWavePacket{D, <:Number, NullNumber}) where D =
+    throw(ArgumentError("This operation requires an integrable product, but both z are NullNumbers (plane waves)"))
+_check_integrable(::GaussianWavePacket, ::GaussianWavePacket) = nothing
 
 # Checks a dimension selector (dims) for a wave packet of dimension D
 function _check_dims(dims, D)
@@ -338,7 +342,7 @@ function Base.:*(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
     q = U \ (transpose(U) \ (real(G1.z) * G1.q + real(G2.z) * G2.q))
     y1 = q - G1.q
     y2 = q - G2.q
-    p0 = _imagz(G1.z) * y1 + _imagz(G2.z) * y2
+    p0 = -(_imagz(G1.z) * y1 + _imagz(G2.z) * y2)
     p = G1.p + G2.p + p0
     # λ = G1(q) * G2(q) * cis(-p⋅q), with all the exponents combined in a single exp and a single cis
     E = (_quad(y1, G1.z) + _quad(y2, G2.z)) / 2
@@ -480,8 +484,7 @@ end
     Also returns the Cholesky factor U of Z (UᵀU = Z), r = U⁻ᵀk and q₂ - q₁
 =#
 function _overlap(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
-    _check_integrable(G1)
-    _check_integrable(G2)
+    _check_integrable(G1, G2)
     T = fitting_float(G1, G2)
     z1c = conj(G1.z)
     U = special_cholesky(_cov_add(z1c, G2.z))
@@ -507,8 +510,7 @@ norm2_L2(G::GaussianWavePacket) = integral(abs2(G))
     where A(u) = -z̄₁(u + q₂ - q₁) - ip₁ and B(u) = -z₂u + ip₂.
 =#
 function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
-    _check_integrable(G1)
-    _check_integrable(G2)
+    _check_integrable(G1, G2)
     T = fitting_float(G1, G2)
     z1c = conj(G1.z)
     # Same computation of I₀ as in _overlap, but Z⁻¹ is computed explicitly (which is faster than
@@ -532,7 +534,8 @@ function dot_∇(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, c::Abstra
 end
 
 # tr(b a⁻¹ b) where a = RᵀR (b real symmetric, possibly made of NullNumbers)
-_tr_bab(R, ::Union{Diagonal{NullNumber}, Symmetric{NullNumber}}) = false
+_tr_bab(R::Diagonal, ::Diagonal{NullNumber}) = false
+_tr_bab(R, ::Symmetric{NullNumber}) = false
 _tr_bab(R::Diagonal, b::Diagonal) = sum((b.diag ./ R.diag).^2)
 _tr_bab(R, b::Symmetric{<:Real, <:SMatrix{D, D}}) where D = sum(abs2, transpose(R) \ SMatrix{D, D}(b))
 

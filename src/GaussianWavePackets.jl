@@ -30,6 +30,7 @@ export hermite_grid
 export evaluate
 export evaluate_grid
 export hermite_discrete_transform
+export hermite_discrete_transform!
 export hermite_quadrature
 export truncate_to_gaussian
 export integral
