@@ -2,3 +2,4 @@ Manifest.toml
 *.cov
 lcov.info
 docs/build/
+review-remaining-issues.md
