@@ -58,6 +58,8 @@ min_eig(z::AbstractMatrix) = eigmin(Symmetric(real(Matrix(z))))
 # The center of a wave packet (0 if q is not present)
 center(q::SVector) = map(x -> x isa NullNumber ? 0.0 : x, q)
 center(q::Number) = SVector(q isa NullNumber ? 0.0 : q)
+# The entries of a vector, with the NullNumbers replaced by 0.0 (for the comparisons with ≈)
+num(v) = map(y -> y isa NullNumber ? 0.0 : y, v)
 center(G::GaussianWavePacket) = center(G.q)
 center(H::HermiteWavePacket1D) = center(H.q)
 

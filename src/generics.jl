@@ -53,6 +53,8 @@ end
 norm_L2(G::AbstractWavePacket) = sqrt(norm2_L2(G))
 norm_∇(G::AbstractWavePacket) = sqrt(norm2_∇(G))
 norm_∇(G::AbstractWavePacket, c::AbstractVector) = sqrt(norm2_∇(G, c))
+norm_x(G::AbstractWavePacket) = sqrt(norm2_x(G))
+norm_x(G::AbstractWavePacket, c::AbstractVector) = sqrt(norm2_x(G, c))
 ∫(G::AbstractWavePacket; kwargs...) = integral(G; kwargs...)
 # Evaluation at a point given by its coordinates (which may be of different numeric types)
 (G::AbstractWavePacket{D})(x::Number...) where D = G(SVector{D}(promote(x...)))
@@ -216,6 +218,88 @@ function norm2_∇ end
 Square root of [`norm2_∇`](@ref).
 """
 norm_∇
+
+"""
+    dot_x(G1, G2)
+    dot_x(G1, G2, c)
+
+Computes `∫dx |x|² conj(G1(x)) G2(x)`, that is the L² inner product of `xG1` and `xG2`
+(the hermitian product in ℂᴰ being used for the vectors).
+With `c` (a real vector), computes `∫dx |x-c|² conj(G1(x)) G2(x)`.
+
+Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
+"""
+function dot_x end
+
+"""
+    norm2_x(G)
+    norm2_x(G, c)
+
+Computes `∫dx |x|² |G(x)|²` (or, with `c`, `∫dx |x-c|² |G(x)|²`).
+"""
+function norm2_x end
+
+"""
+    norm_x(G)
+    norm_x(G, c)
+
+Square root of [`norm2_x`](@ref).
+"""
+norm_x
+
+"""
+    moment_x(G1, G2; dims)
+    moment_x(G; dims)
+
+Computes the vector `(∫dx xⱼ conj(G1(x)) G2(x))ⱼ` for `j` in `dims` (a tuple of distinct
+integers, all the dimensions by default), as an `SVector`.
+With a single argument, computes the associated quadratic form `(∫dx xⱼ |G(x)|²)ⱼ`, which is real.
+
+`dims` should be a constant for the result to be type-stable. When it is not known at compile
+time, `moment_x(G1, G2, Val(dims))` can be used instead.
+
+Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
+"""
+function moment_x end
+
+"""
+    moment_D(G1, G2; dims)
+    moment_D(G; dims)
+
+Computes the vector `(∫dx conj(DⱼG1(x)) G2(x))ⱼ` for `j` in `dims` (a tuple of distinct
+integers, all the dimensions by default), as an `SVector`, where `Dⱼ = -i∂ⱼ`.
+With a single argument, computes the associated quadratic form `(∫dx conj(DⱼG(x)) G(x))ⱼ`,
+which is real.
+
+`dims` should be a constant for the result to be type-stable. When it is not known at compile
+time, `moment_D(G1, G2, Val(dims))` can be used instead.
+
+Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
+"""
+function moment_D end
+
+"""
+    moment_xx(G1, G2)
+    moment_xx(G)
+
+Computes the matrix `(∫dx xᵢxⱼ conj(G1(x)) G2(x))ᵢⱼ`, as an `SMatrix`.
+With a single argument, computes the associated quadratic form `(∫dx xᵢxⱼ |G(x)|²)ᵢⱼ`, which is real.
+
+Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
+"""
+function moment_xx end
+
+"""
+    moment_xD(G1, G2)
+    moment_xD(G)
+
+Computes the matrix `(∫dx conj(G1(x)) (AᵢⱼG2)(x))ᵢⱼ`, as an `SMatrix`, where
+`Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2 = xᵢDⱼ - iδᵢⱼ/2` is the symmetrized (self-adjoint) product of `xᵢ` and
+`Dⱼ = -i∂ⱼ`. With a single argument, computes the associated quadratic form, which is real.
+
+Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
+"""
+function moment_xD end
 
 """
     coulomb_integral(G::GaussianWavePacket{3})

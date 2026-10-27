@@ -35,6 +35,7 @@ inv_fourier
 convolution
 truncate_to_gaussian
 truncate_hermite
+gaussian_hull
 ```
 
 ## Inner products and norms
@@ -46,6 +47,13 @@ norm_L2
 dot_∇
 norm2_∇
 norm_∇
+dot_x
+norm2_x
+norm_x
+moment_x
+moment_D
+moment_xx
+moment_xD
 ```
 
 ## Hermite quadrature

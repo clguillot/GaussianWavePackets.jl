@@ -47,6 +47,14 @@ export norm_L2
 export dot_∇
 export norm2_∇
 export norm_∇
+export dot_x
+export norm2_x
+export norm_x
+export moment_x
+export moment_D
+export moment_xx
+export moment_xD
+export gaussian_hull
 export core_type
 export coulomb_integral
 

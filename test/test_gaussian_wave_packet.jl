@@ -362,6 +362,154 @@ function _test_gwp_dot_grad(nb_reps, tol, tol_cub)
     end
 end
 
+function _test_gwp_dot_x(nb_reps, tol, tol_cub)
+    @testset "dot x" begin
+        err = 0.0
+        err_id = 0.0
+        alloc = 0
+        for D in (1, 2)
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                c = 2 * (rand(SVector{D}) .- 0.5)
+                lo, hi = integration_box((center(G1), center(G2), c), min(min_eig(G1.z), min_eig(G2.z)))
+                s = sqrt(norm2_x(G1) * norm2_x(G2)) + sqrt(norm2_x(G1, c) * norm2_x(G2, c))
+                I1 = complex_cubature(y -> sum(abs2, y) * conj(G1(y)) * G2(y), lo, hi)
+                err = max(err, abs(dot_x(G1, G2) - I1) / s)
+                I1c = complex_cubature(y -> sum(abs2, y - c) * conj(G1(y)) * G2(y), lo, hi)
+                err = max(err, abs(dot_x(G1, G2, c) - I1c) / s)
+            end
+        end
+        for D in (1, 2, 3), _ in 1:nb_reps
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                c = 2 * (rand(SVector{D}) .- 0.5)
+                s = sqrt(norm2_x(G1) * norm2_x(G2))
+                err_id = max(err_id, abs(dot_x(G2, G1) - conj(dot_x(G1, G2))) / s)
+                # The x side of dot_∇ in Fourier
+                err_id = max(err_id, abs(dot_x(G1, G2, c) - dot_∇(fourier(G1), fourier(G2), -c) / (2π)^D) / s)
+                err_id = max(err_id, err_rel(norm2_x(G1), real(dot_x(G1, G1))), abs(imag(dot_x(G1, G1))) / norm2_x(G1))
+                err_id = max(err_id, err_rel(norm2_x(G1, c), real(dot_x(G1, G1, c))))
+                err_id = max(err_id, err_rel(norm_x(G1, c)^2, norm2_x(G1, c)), err_rel(norm_x(G1)^2, norm2_x(G1)))
+                alloc += alloc_of(dot_x, G1, G2) + alloc_of(dot_x, G1, G2, c) + alloc_of(norm2_x, G1) + alloc_of(norm2_x, G1, c)
+            end
+        end
+
+        @test err <= tol_cub
+        @test err_id <= tol
+        report_alloc("dot x", alloc)
+    end
+end
+
+function _test_gwp_moments(nb_reps, tol, tol_cub)
+    @testset "moments x and D" begin
+        err = 0.0
+        err_id = 0.0
+        alloc = 0
+        # ∫conj(DⱼG1)G2 = (2π)⁻ᴰ ∫ξⱼ conj(Ĝ1)Ĝ2
+        for D in (1, 2)
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                s = norm_L2(G1) * norm_L2(G2)
+                lo, hi = integration_box((center(G1), center(G2)), min(min_eig(G1.z), min_eig(G2.z)))
+                # (the box is not symmetric: otherwise, when q₁ = q₂ = 0, the first cubature rule of the odd
+                #   part of the integrand vanishes, and the cubature wrongly stops there)
+                lo, hi = lo .- 0.123, hi .+ 0.057
+                Ix = [complex_cubature(y -> y[j] * conj(G1(y)) * G2(y), lo, hi) for j in 1:D]
+                err = max(err, maximum(abs, moment_x(G1, G2) - Ix) / s)
+                GF = conj(fourier(G1)) * fourier(G2)
+                lo, hi = integration_box((center(GF),), min_eig(GF.z))
+                ID = [complex_cubature(y -> y[j] * GF(y), lo, hi) / (2π)^D for j in 1:D]
+                err = max(err, maximum(abs, moment_D(G1, G2) - ID) / s)
+            end
+        end
+        for D in (1, 2, 3), _ in 1:nb_reps
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                s = norm_L2(G1) * norm_L2(G2)
+                Mx, MD = moment_x(G1, G2), moment_D(G1, G2)
+                # Self-adjointness
+                err_id = max(err_id, maximum(abs, moment_x(G2, G1) - conj(Mx)) / s)
+                err_id = max(err_id, maximum(abs, moment_D(G2, G1) - conj(MD)) / s)
+                # x and D are exchanged by the Fourier transform
+                err_id = max(err_id, maximum(abs, moment_D(fourier(G1), fourier(G2)) / (2π)^D + Mx) / s)
+                err_id = max(err_id, maximum(abs, moment_x(fourier(G1), fourier(G2)) / (2π)^D - MD) / s)
+                # The quadratic forms
+                n = norm2_L2(G1)
+                err_id = max(err_id, maximum(abs, moment_x(G1) - real(moment_x(G1, G1))) / n, maximum(abs, imag(moment_x(G1, G1))) / n)
+                err_id = max(err_id, maximum(abs, moment_D(G1) - real(moment_D(G1, G1))) / n, maximum(abs, imag(moment_D(G1, G1))) / n)
+                @test eltype(moment_x(G1)) <: Union{Float64, NullNumber} && eltype(moment_D(G1)) <: Union{Float64, NullNumber}
+                # Dimension selectors
+                if D == 3
+                    for dims in ((2,), (3, 1), (1, 2, 3), ())
+                        I = SVector{length(dims), Int}(dims...)
+                        @test num(moment_x(G1, G2; dims=dims)) ≈ num(Mx[I]) && num(moment_x(G1, G2, Val(dims))) ≈ num(Mx[I])
+                        @test num(moment_D(G1, G2; dims=dims)) ≈ num(MD[I]) && num(moment_D(G1, G2, Val(dims))) ≈ num(MD[I])
+                        @test num(moment_x(G1; dims=dims)) ≈ num(moment_x(G1)[I]) && num(moment_D(G1; dims=dims)) ≈ num(moment_D(G1)[I])
+                    end
+                    alloc += alloc_of((G1, G2) -> moment_x(G1, G2; dims=(3, 1)), G1, G2) + alloc_of(G -> moment_D(G; dims=(2,)), G1)
+                end
+                alloc += alloc_of(moment_x, G1, G2) + alloc_of(moment_D, G1, G2) + alloc_of(moment_x, G1) + alloc_of(moment_D, G1)
+            end
+        end
+        G = rand_gwp(Val(3), :sym, true, true, true)
+        @test_throws ArgumentError moment_x(G; dims=(1, 1))
+        @test_throws ArgumentError moment_D(G, G; dims=(4,))
+
+        @test err <= tol_cub
+        @test err_id <= tol
+        report_alloc("moments x and D", alloc)
+    end
+end
+
+function _test_gwp_second_moments(nb_reps, tol, tol_cub)
+    @testset "second moments and Gaussian hull" begin
+        err = 0.0
+        err_id = 0.0
+        alloc = 0
+        # ∇G = (-z(x-q) + ip)G, written independently of the package
+        grad(G::GaussianWavePacket{D}, y) where D = (-(SMatrix{D, D}(G.z) * (y - center(G))) + im * num(G.p)) * G(y)
+        for D in (1, 2)
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                s = norm_L2(G1) * norm_L2(G2)
+                lo, hi = integration_box((center(G1), center(G2)), min(min_eig(G1.z), min_eig(G2.z)))
+                # (not symmetric, see the test of the moments)
+                lo, hi = lo .- 0.123, hi .+ 0.057
+                Ixx = [complex_cubature(y -> y[i] * y[j] * conj(G1(y)) * G2(y), lo, hi) for i in 1:D, j in 1:D]
+                IxD = [complex_cubature(y -> conj(G1(y)) * (-im * y[i] * grad(G2, y)[j] - (i == j ? im / 2 : 0) * G2(y)), lo, hi)
+                       for i in 1:D, j in 1:D]
+                err = max(err, maximum(abs, moment_xx(G1, G2) - Ixx) / s, maximum(abs, moment_xD(G1, G2) - IxD) / s)
+            end
+        end
+        for D in (1, 2, 3), _ in 1:nb_reps
+            combos = gwp_combos(Val(D))
+            for (G1, G2) in zip(combos, shuffle(combos))
+                s = norm_L2(G1) * norm_L2(G2)
+                n = norm2_L2(G1)
+                # Self-adjointness of xᵢxⱼ and of the symmetrized xᵢDⱼ
+                err_id = max(err_id, maximum(abs, moment_xx(G2, G1) - conj(moment_xx(G1, G2))) / s)
+                err_id = max(err_id, maximum(abs, moment_xD(G2, G1) - conj(moment_xD(G1, G2))) / s)
+                # Traces
+                err_id = max(err_id, abs(tr(moment_xx(G1, G2)) - dot_x(G1, G2)) / s)
+                # The quadratic forms
+                err_id = max(err_id, maximum(abs, moment_xx(G1) - real(moment_xx(G1, G1))) / n, maximum(abs, imag(moment_xx(G1, G1))) / n)
+                err_id = max(err_id, maximum(abs, moment_xD(G1) - real(moment_xD(G1, G1))) / n, maximum(abs, imag(moment_xD(G1, G1))) / n)
+                # The hull of a gaussian wave packet is the wave packet itself
+                @test gaussian_hull(G1) === G1
+                x = near(G1)
+                err_id = max(err_id, abs(gaussian_hull(WavePacketSum(G1))(x) - G1(x)) / abs(G1(x)))
+                err_id = max(err_id, abs(gaussian_hull(G1 + 0.5 * G1)(x) - 1.5 * G1(x)) / abs(G1(x)))
+                alloc += alloc_of(moment_xx, G1, G2) + alloc_of(moment_xD, G1, G2) + alloc_of(moment_xx, G1) + alloc_of(moment_xD, G1)
+                alloc += alloc_of(gaussian_hull, G1 + G2)
+            end
+        end
+
+        @test err <= tol_cub
+        @test err_id <= 1e3 * tol
+        report_alloc("second moments and Gaussian hull", alloc)
+    end
+end
+
 function _test_gwp_coulomb(nb_reps, tol, tol_cub)
     @testset "Coulomb integral" begin
         D = 3
@@ -453,6 +601,9 @@ function test_gaussian_wave_packet()
         _test_gwp_convolution(nb_reps, tol, tol_cub)
         _test_gwp_dot_L2(nb_reps, tol, tol_cub)
         _test_gwp_dot_grad(nb_reps, tol, tol_cub)
+        _test_gwp_dot_x(nb_reps, tol, tol_cub)
+        _test_gwp_moments(nb_reps, tol, tol_cub)
+        _test_gwp_second_moments(nb_reps, tol, tol_cub)
         _test_gwp_coulomb(nb_reps, tol, tol_cub)
         _test_gwp_conversions(nb_reps, tol, tol_cub)
         _test_gwp_errors(nb_reps, tol, tol_cub)

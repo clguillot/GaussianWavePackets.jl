@@ -64,6 +64,14 @@ _terms(G::WavePacketSum) = G.g
 # (f::F forces the specialization on f, which Julia does not do for a function which is only passed through)
 @inline _sum_terms(f::F, ::Tuple{}, acc) where F = acc
 @inline _sum_terms(f::F, g::Tuple, acc) where F = _sum_terms(f, Base.tail(g), acc + f(first(g)))
+# (terms of the same type: a plain loop, the type of the sum being fixed after the first term)
+function _sum_terms(f::F, g::Tuple{T, Vararg{T}}, acc) where{F, T}
+    s = acc + f(first(g))
+    for h in Base.tail(g)
+        s += f(h)
+    end
+    return s
+end
 _sum_terms(f::F, g, acc) where F = sum(f, g; init=acc)
 
 
@@ -266,20 +274,18 @@ end
     it is handled by the recursive calls of f.
 =#
 
-# Computes ∑ₖₗ f(G1[k], G2[l])
-function _all_terms(f::F, G1::AbstractWavePacket, G2::AbstractWavePacket) where F
-    s = zero(promote_type(core_type(G1), core_type(G2)))
+# Computes s + ∑ₖₗ f(G1[k], G2[l])
+function _all_terms(f::F, G1::AbstractWavePacket, G2::AbstractWavePacket,
+            s=zero(promote_type(core_type(G1), core_type(G2)))) where F
     g2_list = _terms(G2)
     return _sum_terms(g1 -> _sum_terms(g2 -> f(g1, g2), g2_list, s), _terms(G1), s)
 end
-# Computes ∑ₖ real(f(G[k]))
-function _diagonal_terms(f::F, G::AbstractWavePacket) where F
-    s = zero(real(core_type(G)))
+# Computes s + ∑ₖ real(f(G[k]))
+function _diagonal_terms(f::F, G::AbstractWavePacket, s=zero(real(core_type(G)))) where F
     return _sum_terms(g -> real(f(g)), _terms(G), s)
 end
-# Computes ∑ₖ<ₗ real(f(G[k], G[l]))
-function _cross_terms(f::F, G::AbstractWavePacket) where F
-    z = zero(real(core_type(G)))
+# Computes z + ∑ₖ<ₗ real(f(G[k], G[l]))
+function _cross_terms(f::F, G::AbstractWavePacket, z=zero(real(core_type(G)))) where F
     return _cross_terms(f, _terms(G), z, z)
 end
 # (a tuple is handled recursively, which is type stable even if the terms are of different types)
@@ -303,8 +309,9 @@ function _cross_terms(f::F, g_list, acc, z) where F
 end
 # Computes ∑ₖ f_norm(G[k]) + 2 ∑ₖ<ₗ real(f_dot(G[k], G[l]))
 #   which is the squared norm of ∑ₖG[k] if f_norm(g) and f_dot(g1, g2) are the squared norm of g and the inner product of g1 and g2
-function _norm2_terms(f_norm::F1, f_dot::F2, G::AbstractWavePacket) where{F1, F2}
-    return _diagonal_terms(f_norm, G) + 2 * _cross_terms(f_dot, G)
+#   (z is the zero of the result, a real number by default)
+function _norm2_terms(f_norm::F1, f_dot::F2, G::AbstractWavePacket, z=zero(real(core_type(G)))) where{F1, F2}
+    return _diagonal_terms(f_norm, G, z) + 2 * _cross_terms(f_dot, G, z)
 end
 
 #=
@@ -340,3 +347,141 @@ dot_∇(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector) wher
 =#
 norm2_∇(G::WavePacketSum) = _norm2_terms(norm2_∇, dot_∇, G)
 norm2_∇(G::WavePacketSum, c::AbstractVector) = norm2_∇(_shift_p(G, c))
+
+#=
+    Callable objects which forward c (or dims) to dot_x, norm2_x, moment_x and moment_D.
+    They are used instead of closures, so that the recursive calls for nested sums are inferred
+=#
+struct _DotX{V}
+    c::V
+end
+(f::_DotX)(G1, G2) = dot_x(G1, G2, f.c)
+struct _Norm2X{V}
+    c::V
+end
+(f::_Norm2X)(G) = norm2_x(G, f.c)
+struct _MomentX{dims} end
+_MomentX(::Val{dims}) where dims = _MomentX{dims}()
+(::_MomentX{dims})(G) where dims = moment_x(G, Val(dims))
+(::_MomentX{dims})(G1, G2) where dims = moment_x(G1, G2, Val(dims))
+struct _MomentD{dims} end
+_MomentD(::Val{dims}) where dims = _MomentD{dims}()
+(::_MomentD{dims})(G) where dims = moment_D(G, Val(dims))
+(::_MomentD{dims})(G1, G2) where dims = moment_D(G1, G2, Val(dims))
+
+#=
+    Computes ∫<(x-c)G1,(x-c)G2> where at least one of the arguments is a sum
+=#
+dot_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
+dot_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
+dot_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
+
+#=
+    Computes ∫|x-c|²|G|² for a sum
+=#
+norm2_x(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _norm2_terms(_Norm2X(c), _DotX(c), G)
+
+# A null vector of numbers of type T, with one entry for each dimension in dims
+_zero_moment(::Val{D}, v::Val, ::Type{T}) where{D, T} = zero(similar_type(_dims_index(Val(D), v), T))
+
+#=
+    Computes the vectors (∫xⱼ conj(G1)G2)ⱼ and (∫conj(DⱼG1)G2)ⱼ, where at least one of the arguments is a sum
+=#
+@inline Base.@constprop :aggressive function moment_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}; dims=nothing) where D
+    return moment_x(G1, G2, Val(dims))
+end
+@inline Base.@constprop :aggressive function moment_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}; dims=nothing) where D
+    return moment_x(G1, G2, Val(dims))
+end
+@inline Base.@constprop :aggressive function moment_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}; dims=nothing) where D
+    return moment_x(G1, G2, Val(dims))
+end
+moment_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
+moment_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
+moment_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
+_moment_x_terms(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}, v::Val) where D =
+    _all_terms(_MomentX(v), G1, G2, _zero_moment(Val(D), v, promote_type(core_type(G1), core_type(G2))))
+
+@inline Base.@constprop :aggressive function moment_D(G1::WavePacketSum{D}, G2::WavePacketSum{D}; dims=nothing) where D
+    return moment_D(G1, G2, Val(dims))
+end
+@inline Base.@constprop :aggressive function moment_D(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}; dims=nothing) where D
+    return moment_D(G1, G2, Val(dims))
+end
+@inline Base.@constprop :aggressive function moment_D(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}; dims=nothing) where D
+    return moment_D(G1, G2, Val(dims))
+end
+moment_D(G1::WavePacketSum{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
+moment_D(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
+moment_D(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
+_moment_D_terms(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}, v::Val) where D =
+    _all_terms(_MomentD(v), G1, G2, _zero_moment(Val(D), v, complex(promote_type(core_type(G1), core_type(G2)))))
+
+#=
+    Computes the vectors (∫xⱼ|G|²)ⱼ and (∫conj(DⱼG)G)ⱼ for a sum
+    Since xⱼ and Dⱼ are self-adjoint, the cross terms are 2Re(∫xⱼ conj(G[k])G[l]) (and the same for Dⱼ)
+=#
+@inline Base.@constprop :aggressive function moment_x(G::WavePacketSum; dims=nothing)
+    return moment_x(G, Val(dims))
+end
+@inline Base.@constprop :aggressive function moment_D(G::WavePacketSum; dims=nothing)
+    return moment_D(G, Val(dims))
+end
+moment_x(G::WavePacketSum{D}, v::Val) where D = _norm2_terms(_MomentX(v), _MomentX(v), G, _zero_moment(Val(D), v, real(core_type(G))))
+moment_D(G::WavePacketSum{D}, v::Val) where D = _norm2_terms(_MomentD(v), _MomentD(v), G, _zero_moment(Val(D), v, real(core_type(G))))
+
+#=
+    Computes the matrices (∫xᵢxⱼ conj(G1)G2)ᵢⱼ and (∫conj(G1) Aᵢⱼ G2)ᵢⱼ (Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2),
+    where at least one of the arguments is a sum
+=#
+moment_xx(G1::WavePacketSum{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
+moment_xx(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
+moment_xx(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
+moment_xD(G1::WavePacketSum{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
+moment_xD(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
+moment_xD(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
+_moment_mat_terms(f::F, G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where{F, D} =
+    _all_terms(f, G1, G2, zero(SMatrix{D, D, complex(promote_type(core_type(G1), core_type(G2)))}))
+
+#=
+    Computes the real matrices (∫xᵢxⱼ|G|²)ᵢⱼ and (∫conj(G) Aᵢⱼ G)ᵢⱼ for a sum
+    (since xᵢxⱼ and Aᵢⱼ are self-adjoint, the cross terms are 2Re(∫conj(G[k]) Aᵢⱼ G[l]))
+=#
+moment_xx(G::WavePacketSum{D}) where D = _norm2_terms(moment_xx, moment_xx, G, zero(SMatrix{D, D, real(core_type(G))}))
+moment_xD(G::WavePacketSum{D}) where D = _norm2_terms(moment_xD, moment_xD, G, zero(SMatrix{D, D, real(core_type(G))}))
+
+#=
+    Gaussian hull of a sum f: the gaussian wave packet λ exp(-(x-q)ᵀz(x-q)/2) exp(ip⋅x) where
+    - q = ⟨x⟩ and p = ⟨D⟩ (⟨A⟩ = ∫conj(f)Af / ‖f‖²),
+    - with z = a + ib, Re(z) = a = Σ⁻¹/2 where Σ = ⟨(x-q)(x-q)ᵀ⟩ is the position covariance, and
+      b = -2aK where K = ⟨(x-q)(D-p)ᵀ⟩ (symmetrized) is the position-momentum covariance
+      (these are the relations satisfied by a gaussian wave packet),
+    - λ = ⟨G₁,f⟩/‖G₁‖², where G₁ is the gaussian of amplitude 1 with these z, q, p (L² projection).
+    The result is exact (f itself) when f is a single gaussian wave packet.
+=#
+"""
+    gaussian_hull(G::WavePacketSum)
+
+Returns the [`GaussianWavePacket`](@ref) `λ exp(-(x-q)ᵀz(x-q)/2) exp(ip⋅x)` which has the same
+first and second moments as `G`:
+- `q` and `p` are the mean position and momentum, `moment_x(G) / norm2_L2(G)` and `moment_D(G) / norm2_L2(G)`,
+- `Re(z) = Σ⁻¹/2` where `Σ` is the position covariance, and `Im(z) = -2Re(z)K` where `K` is the
+  (symmetrized) position-momentum covariance (see [`moment_xx`](@ref), [`moment_xD`](@ref)),
+- `λ` is the L² projection of `G` on the gaussian of amplitude 1 with these `z`, `q`, `p`.
+
+`Re(z)` is always positive definite. For a single `GaussianWavePacket`, the hull is the wave packet itself.
+Defined for sums of [`GaussianWavePacket`](@ref)s.
+"""
+function gaussian_hull(G::WavePacketSum{D}) where D
+    n = norm2_L2(G)
+    q = moment_x(G) / n
+    p = moment_D(G) / n
+    Σ = moment_xx(G) / n - q * transpose(q)
+    K = moment_xD(G) / n - q * transpose(p)
+    a = inv(Σ) / 2
+    b = -2 * (a * K)
+    z = Symmetric(a + im * (b + transpose(b)) / 2)
+    G1 = GaussianWavePacket(one(real(eltype(z))), z, q, p)
+    λ = dot_L2(G1, G) / norm2_L2(G1)
+    return GaussianWavePacket(λ, z, q, p)
+end

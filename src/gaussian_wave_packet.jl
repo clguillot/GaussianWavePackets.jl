@@ -552,6 +552,147 @@ function norm2_∇(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}) wh
     return norm2_∇(GaussianWavePacket(G.λ, G.z, G.q, G.p - cs))
 end
 
+#=
+    Same as _overlap, but returns I₀, Z⁻¹ and m = Z⁻¹k, so that conj(G1)G2 is I₀ times a normalized
+    gaussian in u = x - q₂, of mean m and covariance Z⁻¹ (Z⁻¹ is computed explicitly as in dot_∇)
+=#
+function _overlap_inv(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+    _check_integrable(G1, G2)
+    z1c = conj(G1.z)
+    Zinv, dU = _inv_diagchol(_cov_add(z1c, G2.z))
+    d = G2.q - G1.q
+    Δp = G2.p - G1.p
+    k = im * Δp - z1c * d
+    m = Zinv * k
+    E = (_bdot(k, m) - _quad(d, z1c)) / 2 + im * _bdot(Δp, G2.q)
+    I0 = conj(G1.λ) * G2.λ / prod(invsqrt2π * dU) * exp(E)
+    return I0, Zinv, m
+end
+
+#=
+    Computes ∫<(x-c)G1,(x-c)G2> = ∫|x-c|² conj(G1)G2
+    With the notations of _overlap_inv,
+        ∫|x-c|² conj(G1)G2 = I₀ (tr(Z⁻¹) + yᵀy)
+    where y = m + q₂ - c.
+=#
+function dot_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D},
+            c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
+    I0, Zinv, m = _overlap_inv(G1, G2)
+    y = m + (G2.q - SVector{D}(c))
+    return I0 * (tr(Zinv) + _bdot(y, y))
+end
+
+#=
+    Computes ∫|x-c|²|G|²
+    With a = Re(z) = RᵀR, this is the case G1 = G2 of dot_x, where Z = 2a and m = 0:
+        ∫|x-c|²|G|² = ‖G‖² (tr(a⁻¹)/2 + |q-c|²)
+=#
+function norm2_x(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
+    _check_integrable(G)
+    R = special_cholesky(real(G.z))
+    nrm2 = abs2(G.λ) / prod(invsqrtπ * diag(R))
+    R_inv = R \ Diagonal(ones(SVector{D, Bool}))
+    return nrm2 * (sum(abs2, R_inv) / 2 + sum(abs2, G.q - SVector{D}(c)))
+end
+
+# The indices of the dimensions in dims (all the dimensions if dims is nothing), as an SVector
+@generated function _dims_index(::Val{D}, ::Val{dims}) where{D, dims}
+    dims === nothing && return :( SVector{$D, Int}($(1:D...)) )
+    msg = _check_dims(dims, D)
+    msg === nothing || return :( throw(ArgumentError($msg)) )
+    return :( SVector{$(length(dims)), Int}($(dims...)) )
+end
+
+#=
+    Computes the vector (∫xⱼ conj(G1)G2)ⱼ for j in dims
+    With the notations of _overlap, conj(G1)G2 is I₀ times a normalized gaussian in u = x - q₂,
+    of mean m = Z⁻¹k = U⁻¹r, so that ∫x conj(G1)G2 = I₀(m + q₂)
+=#
+@inline Base.@constprop :aggressive function moment_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}; dims=nothing) where D
+    return moment_x(G1, G2, Val(dims))
+end
+function moment_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
+    I = _dims_index(Val(D), Val(dims))
+    I0, U, r, _ = _overlap(G1, G2)
+    m = U \ r
+    return I0 * (m + G2.q)[I]
+end
+# Computes the vector (∫xⱼ|G|²)ⱼ = ‖G‖² q[dims]
+@inline Base.@constprop :aggressive function moment_x(G::GaussianWavePacket; dims=nothing)
+    return moment_x(G, Val(dims))
+end
+function moment_x(G::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
+    I = _dims_index(Val(D), Val(dims))
+    return norm2_L2(G) * G.q[I]
+end
+
+#=
+    Computes the vector (∫conj(DⱼG1)G2)ⱼ for j in dims (where D = -i∇)
+    Since D is self-adjoint, this is ∫conj(G1)DG2, and DG2 = (p₂ + iz₂u)G2 (u = x - q₂), so that
+    with the notations of moment_x, ∫conj(G1)DG2 = I₀(p₂ + iz₂m)
+=#
+@inline Base.@constprop :aggressive function moment_D(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}; dims=nothing) where D
+    return moment_D(G1, G2, Val(dims))
+end
+function moment_D(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
+    I = _dims_index(Val(D), Val(dims))
+    I0, U, r, _ = _overlap(G1, G2)
+    m = U \ r
+    return I0 * (G2.p + im * (G2.z * m))[I]
+end
+# Computes the vector (∫conj(DⱼG)G)ⱼ = ‖G‖² p[dims]
+@inline Base.@constprop :aggressive function moment_D(G::GaussianWavePacket; dims=nothing)
+    return moment_D(G, Val(dims))
+end
+function moment_D(G::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
+    I = _dims_index(Val(D), Val(dims))
+    return norm2_L2(G) * G.p[I]
+end
+
+#=
+    Computes the matrix (∫xᵢxⱼ conj(G1)G2)ᵢⱼ
+    With the notations of _overlap_inv, and y = m + q₂ the mean of x, this is I₀(Z⁻¹ + yyᵀ)
+=#
+function moment_xx(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+    I0, Zinv, m = _overlap_inv(G1, G2)
+    y = m + G2.q
+    return I0 * (SMatrix{D, D}(Zinv) + y * transpose(y))
+end
+#=
+    Computes the matrix (∫xᵢxⱼ|G|²)ᵢⱼ
+    With a = Re(z) = RᵀR, this is the case G1 = G2 of moment_xx, where Z = 2a and m = 0:
+        ∫xxᵀ|G|² = ‖G‖² (a⁻¹/2 + qqᵀ)
+=#
+function moment_xx(G::GaussianWavePacket{D}) where D
+    _check_integrable(G)
+    R = special_cholesky(real(G.z))
+    nrm2 = abs2(G.λ) / prod(invsqrtπ * diag(R))
+    R_inv = SMatrix{D, D}(R \ Diagonal(ones(SVector{D, Bool})))
+    return nrm2 * (R_inv * transpose(R_inv) / 2 + G.q * transpose(G.q))
+end
+
+#=
+    Computes the matrix (∫conj(G1) Aᵢⱼ G2)ᵢⱼ where Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2 = xᵢDⱼ - iδᵢⱼ/2
+    (the symmetrized product, which is self-adjoint)
+    Since DG2 = (p₂ + iz₂u)G2 (u = x - q₂), with the notations of _overlap_inv and y = m + q₂,
+        ∫conj(G1) xDᵀ G2 = I₀(y(p₂ + iz₂m)ᵀ + iZ⁻¹z₂)
+=#
+function moment_xD(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+    I0, Zinv, m = _overlap_inv(G1, G2)
+    y = m + G2.q
+    return I0 * (y * transpose(G2.p + im * (G2.z * m)) + im * (SMatrix{D, D}(Zinv * G2.z) - I / 2))
+end
+# Computes the matrix (∫conj(G) Aᵢⱼ G)ᵢⱼ, which is real (= ‖G‖²(qpᵀ - a⁻¹b/2) where z = a + ib)
+moment_xD(G::GaussianWavePacket) = real(moment_xD(G, G))
+
+"""
+    gaussian_hull(G)
+
+Returns a [`GaussianWavePacket`](@ref) which approximates the wave packet `G`: `G` itself for a
+`GaussianWavePacket`. See the method for [`WavePacketSum`](@ref).
+"""
+gaussian_hull(G::GaussianWavePacket) = G
+
 # The scalar z₀ such that z = z₀I (throws an error if z is not isotropic)
 function _isotropic_scalar(z::CovMat{D}) where D
     z0 = z[1, 1]

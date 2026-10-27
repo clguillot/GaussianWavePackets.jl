@@ -1,6 +1,8 @@
 
 # Wrappers with constant dimension selectors (the result is type stable thanks to constant propagation)
 integral_dims2(G) = integral(G; dims=(2,))
+moment_x_dims2(G) = moment_x(G; dims=(2,))
+moment_D_dims31(G1, G2) = moment_D(G1, G2; dims=(3, 1))
 evaluate_dims31(G, x) = evaluate(G, x; dims=(3, 1))
 
 # The operations of a gaussian wave packet, with their arguments
@@ -12,9 +14,12 @@ function gwp_operations(G::GaussianWavePacket{D}) where D
     ops = Any[(evaluate, (G, x)), (*, (G, G2)), (*, (2.0, G)), (conj, (G,)), (abs2, (G,)), (integral, (G,)),
               (fourier, (G,)), (inv_fourier, (G,)), (convolution, (G, G2)), (dot_L2, (G, G2)),
               (norm2_L2, (G,)), (norm_L2, (G,)), (dot_∇, (G, G2)), (dot_∇, (G, G2, c)), (norm2_∇, (G,)),
-              (norm2_∇, (G, c)), (unitary_product, (G, b, x, c))]
+              (norm2_∇, (G, c)), (unitary_product, (G, b, x, c)), (dot_x, (G, G2)), (dot_x, (G, G2, c)), (norm2_x, (G,)),
+              (norm2_x, (G, c)), (moment_x, (G, G2)), (moment_x, (G,)), (moment_D, (G, G2)), (moment_D, (G,)),
+              (moment_xx, (G, G2)), (moment_xx, (G,)), (moment_xD, (G, G2)), (moment_xD, (G,)), (gaussian_hull, (G + G2,))]
     D == 1 && push!(ops, (evaluate, (G, 0.3)))
-    D == 3 && push!(ops, (integral_dims2, (G,)), (evaluate_dims31, (G, SVector(0.1, 0.2))))
+    D == 3 && push!(ops, (integral_dims2, (G,)), (evaluate_dims31, (G, SVector(0.1, 0.2))),
+                     (moment_x_dims2, (G,)), (moment_D_dims31, (G, G2)))
     return ops
 end
 # The operations of a hermite wave packet, with their arguments
@@ -102,6 +107,10 @@ function test_type_stability()
             @test (@inferred dot_L2(G1, G2)) isa ComplexF32
             @test (@inferred dot_∇(G1, G2)) isa ComplexF32
             @test (@inferred norm2_∇(G1)) isa Float32
+            @test (@inferred dot_x(G1, G2)) isa ComplexF32
+            @test (@inferred norm2_x(G1)) isa Float32
+            @test (@inferred moment_x(G1, G2)) isa SVector{D, ComplexF32}
+            @test (@inferred moment_D(G1)) isa SVector{D, Float32}
             @test (@inferred integral_dims2(G)).λ isa ComplexF32
             @test (@inferred coulomb_integral(GaussianWavePacket(1f0, Diagonal(SVector(1f0, 1f0, 1f0)), SVector(0.1f0, 0f0, 0f0)))) isa Float32
         end
