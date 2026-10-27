@@ -445,13 +445,17 @@ Defined for sums of [`GaussianWavePacket`](@ref)s.
 """
 function gaussian_hull(G::WavePacketSum{D}) where D
     n = norm2_L2(G)
-    q = moment_x(G) / n
-    p = moment_D(G) / n
+    # (q and p are asserted to be vectors: otherwise, when G is not concretely typed, moment_xx(G, q)
+    #  could also be the inner product of G with a wave packet q, and inference keeps that possibility)
+    q = (moment_x(G) / n)::AbstractVector
+    p = (moment_D(G) / n)::AbstractVector
     # (the moments are centered at q and p, which avoids the cancellations of Σ = ⟨xxᵀ⟩ - qqᵀ)
     Σ = moment_xx(G, q) / n
     K = moment_xD(G, q, p) / n
-    a = inv(Σ) / 2
-    b = -2 * (a * K)
+    # Σ⁻¹ is computed with the Cholesky factor of Σ (which is positive definite)
+    Σ_inv, _ = _inv_diagchol(Symmetric(Σ))
+    a = Σ_inv / 2
+    b = -(Σ_inv * K)
     z = Symmetric(a + im * (b + transpose(b)) / 2)
     G1 = GaussianWavePacket(one(real(eltype(z))), z, q, p)
     λ = dot_L2(G1, G) / norm2_L2(G1)
