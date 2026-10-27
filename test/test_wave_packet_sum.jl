@@ -232,7 +232,6 @@ function test_wave_packet_sum()
                     ref = sum(f(a, b) for a in terms(S), b in terms(S))
                     err = max(err, err_rel(f(S, S)[1], ref[1]))
                     err = max(err, err_rel(f(S)[1], real(ref[1])))
-                    err = max(err, err_rel(f(S; dims=(1,))[1], real(ref[1])))
                     err = max(err, err_rel(f(S, G[3])[1], sum_terms(a -> f(a, G[3])[1], S)))
                     err = max(err, err_rel(f(G[3], S)[1], sum_terms(a -> f(G[3], a)[1], S)))
                 end
@@ -243,13 +242,17 @@ function test_wave_packet_sum()
                     err = max(err, err_rel(f(S)[1], real(ref[1])))
                     err = max(err, err_rel(f(S, G[3])[1], sum_terms(a -> f(a, G[3])[1], S)))
                 end
-                S.g isa Tuple && (alloc += alloc_of(moment_xx, S, S) + alloc_of(moment_xD, S) + alloc_of(gaussian_hull, S))
+                # Shifts
+                c2 = SVector(4 * (rand() - 0.5))
+                for (f, args) in ((moment_x, (c,)), (moment_D, (c,)), (moment_xx, (c,)), (moment_xD, (c, c2)))
+                    ref = sum(f(a, b, args...) for a in terms(S), b in terms(S))
+                    err = max(err, err_rel(f(S, S, args...)[1], ref[1]))
+                    err = max(err, err_rel(f(S, args...)[1], real(ref[1])))
+                    err = max(err, err_rel(f(G[3], S, args...)[1], sum_terms(a -> f(G[3], a, args...)[1], S)))
+                end
+                S.g isa Tuple && (alloc += alloc_of(moment_xx, S, S) + alloc_of(moment_xD, S) + alloc_of(gaussian_hull, S)
+                                  + alloc_of(moment_x, S, c) + alloc_of(moment_xD, S, S, c, c2))
             end
-            # In dimension 2, with dims
-            S2 = rand_gwp(Val(2), :sym, true, true, true) + rand_gwp(Val(2), :diag, false, true, false)
-            @test moment_x(S2, S2; dims=(2,)) ≈ moment_x(S2, S2)[SVector(2)]
-            @test moment_D(S2; dims=(2, 1)) ≈ moment_D(S2)[SVector(2, 1)]
-            @test moment_D(S2; dims=()) == SVector{0, Float64}()
 
             @test err <= tol
             report_alloc("dot and norm x, moments", alloc)
@@ -391,6 +394,8 @@ function test_wave_packet_sum()
             @test is_inferred(moment_xx, SGN)
             @test is_inferred(moment_xD, G[1], SGN)
             @test is_inferred(gaussian_hull, SGN)
+            @test is_inferred(moment_D, SGN, SGN, SVector(0.3))
+            @test is_inferred(moment_xD, SGN, SVector(0.3), SVector(0.1))
             report_alloc("nested sums (evaluate, dot_L2, norm2_L2, norm2_∇)",
                          alloc_of(evaluate, S, x) + alloc_of(dot_L2, S, S) + alloc_of(norm2_L2, S) + alloc_of(norm2_∇, SGN))
             report_alloc("nested sums (dot_x, norm2_x, moment_x, moment_D)",

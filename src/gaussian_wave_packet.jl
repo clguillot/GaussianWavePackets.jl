@@ -595,95 +595,78 @@ function norm2_x(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}=zeros
     return nrm2 * (sum(abs2, R_inv) / 2 + sum(abs2, G.q - SVector{D}(c)))
 end
 
-# The indices of the dimensions in dims (all the dimensions if dims is nothing), as an SVector
-@generated function _dims_index(::Val{D}, ::Val{dims}) where{D, dims}
-    dims === nothing && return :( SVector{$D, Int}($(1:D...)) )
-    msg = _check_dims(dims, D)
-    msg === nothing || return :( throw(ArgumentError($msg)) )
-    return :( SVector{$(length(dims)), Int}($(dims...)) )
-end
-
 #=
-    Computes the vector (∫xⱼ conj(G1)G2)ⱼ for j in dims
+    Computes the vector (∫(x-c)ⱼ conj(G1)G2)ⱼ
     With the notations of _overlap, conj(G1)G2 is I₀ times a normalized gaussian in u = x - q₂,
-    of mean m = Z⁻¹k = U⁻¹r, so that ∫x conj(G1)G2 = I₀(m + q₂)
+    of mean m = Z⁻¹k = U⁻¹r, so that ∫(x-c) conj(G1)G2 = I₀(m + q₂ - c)
 =#
-@inline Base.@constprop :aggressive function moment_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}; dims=nothing) where D
-    return moment_x(G1, G2, Val(dims))
-end
-function moment_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
-    I = _dims_index(Val(D), Val(dims))
+function moment_x(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D},
+            c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
     I0, U, r, _ = _overlap(G1, G2)
     m = U \ r
-    return I0 * (m + G2.q)[I]
+    return I0 * (m + (G2.q - SVector{D}(c)))
 end
-# Computes the vector (∫xⱼ|G|²)ⱼ = ‖G‖² q[dims]
-@inline Base.@constprop :aggressive function moment_x(G::GaussianWavePacket; dims=nothing)
-    return moment_x(G, Val(dims))
-end
-function moment_x(G::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
-    I = _dims_index(Val(D), Val(dims))
-    return norm2_L2(G) * G.q[I]
-end
+# Computes the vector (∫(x-c)ⱼ|G|²)ⱼ = ‖G‖²(q - c)
+moment_x(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D =
+    norm2_L2(G) * (G.q - SVector{D}(c))
 
 #=
-    Computes the vector (∫conj(DⱼG1)G2)ⱼ for j in dims (where D = -i∇)
-    Since D is self-adjoint, this is ∫conj(G1)DG2, and DG2 = (p₂ + iz₂u)G2 (u = x - q₂), so that
-    with the notations of moment_x, ∫conj(G1)DG2 = I₀(p₂ + iz₂m)
+    Computes the vector (∫conj((D-c)ⱼG1)G2)ⱼ (where D = -i∇)
+    Since D is self-adjoint, this is ∫conj(G1)(D-c)G2, and DG2 = (p₂ + iz₂u)G2 (u = x - q₂), so that
+    with the notations of moment_x, ∫conj(G1)(D-c)G2 = I₀(p₂ - c + iz₂m)
 =#
-@inline Base.@constprop :aggressive function moment_D(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}; dims=nothing) where D
-    return moment_D(G1, G2, Val(dims))
-end
-function moment_D(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
-    I = _dims_index(Val(D), Val(dims))
+function moment_D(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D},
+            c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
     I0, U, r, _ = _overlap(G1, G2)
     m = U \ r
-    return I0 * (G2.p + im * (G2.z * m))[I]
+    return I0 * ((G2.p - SVector{D}(c)) + im * (G2.z * m))
 end
-# Computes the vector (∫conj(DⱼG)G)ⱼ = ‖G‖² p[dims]
-@inline Base.@constprop :aggressive function moment_D(G::GaussianWavePacket; dims=nothing)
-    return moment_D(G, Val(dims))
-end
-function moment_D(G::GaussianWavePacket{D}, ::Val{dims}) where{D, dims}
-    I = _dims_index(Val(D), Val(dims))
-    return norm2_L2(G) * G.p[I]
-end
+# Computes the vector (∫conj((D-c)ⱼG)G)ⱼ = ‖G‖²(p - c)
+moment_D(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D =
+    norm2_L2(G) * (G.p - SVector{D}(c))
 
 #=
-    Computes the matrix (∫xᵢxⱼ conj(G1)G2)ᵢⱼ
-    With the notations of _overlap_inv, and y = m + q₂ the mean of x, this is I₀(Z⁻¹ + yyᵀ)
+    Computes the matrix (∫(x-c)ᵢ(x-c)ⱼ conj(G1)G2)ᵢⱼ
+    With the notations of _overlap_inv, and y = m + q₂ - c the mean of x - c, this is I₀(Z⁻¹ + yyᵀ)
 =#
-function moment_xx(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+function moment_xx(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D},
+            c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
     I0, Zinv, m = _overlap_inv(G1, G2)
-    y = m + G2.q
+    y = m + (G2.q - SVector{D}(c))
     return I0 * (SMatrix{D, D}(Zinv) + y * transpose(y))
 end
 #=
-    Computes the matrix (∫xᵢxⱼ|G|²)ᵢⱼ
+    Computes the matrix (∫(x-c)ᵢ(x-c)ⱼ|G|²)ᵢⱼ
     With a = Re(z) = RᵀR, this is the case G1 = G2 of moment_xx, where Z = 2a and m = 0:
-        ∫xxᵀ|G|² = ‖G‖² (a⁻¹/2 + qqᵀ)
+        ∫(x-c)(x-c)ᵀ|G|² = ‖G‖² (a⁻¹/2 + (q-c)(q-c)ᵀ)
 =#
-function moment_xx(G::GaussianWavePacket{D}) where D
+function moment_xx(G::GaussianWavePacket{D}, c::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
     _check_integrable(G)
     R = special_cholesky(real(G.z))
     nrm2 = abs2(G.λ) / prod(invsqrtπ * diag(R))
     R_inv = SMatrix{D, D}(R \ Diagonal(ones(SVector{D, Bool})))
-    return nrm2 * (R_inv * transpose(R_inv) / 2 + G.q * transpose(G.q))
+    y = G.q - SVector{D}(c)
+    return nrm2 * (R_inv * transpose(R_inv) / 2 + y * transpose(y))
 end
 
 #=
-    Computes the matrix (∫conj(G1) Aᵢⱼ G2)ᵢⱼ where Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2 = xᵢDⱼ - iδᵢⱼ/2
-    (the symmetrized product, which is self-adjoint)
-    Since DG2 = (p₂ + iz₂u)G2 (u = x - q₂), with the notations of _overlap_inv and y = m + q₂,
-        ∫conj(G1) xDᵀ G2 = I₀(y(p₂ + iz₂m)ᵀ + iZ⁻¹z₂)
+    Computes the matrix (∫conj(G1) Aᵢⱼ G2)ᵢⱼ where Aᵢⱼ is the symmetrized (self-adjoint) product
+        Aᵢⱼ = ((x-cx)ᵢ(D-cD)ⱼ + (D-cD)ⱼ(x-cx)ᵢ)/2 = (x-cx)ᵢ(D-cD)ⱼ - iδᵢⱼ/2
+    Since (D-cD)G2 = (p₂ - cD + iz₂u)G2 (u = x - q₂), with the notations of _overlap_inv and y = m + q₂ - cx,
+        ∫conj(G1) (x-cx)(D-cD)ᵀ G2 = I₀(y(p₂ - cD + iz₂m)ᵀ + iZ⁻¹z₂)
 =#
-function moment_xD(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D}) where D
+function moment_xD(G1::GaussianWavePacket{D}, G2::GaussianWavePacket{D},
+            cx::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber}),
+            cD::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D
     I0, Zinv, m = _overlap_inv(G1, G2)
-    y = m + G2.q
-    return I0 * (y * transpose(G2.p + im * (G2.z * m)) + im * (SMatrix{D, D}(Zinv * G2.z) - I / 2))
+    y = m + (G2.q - SVector{D}(cx))
+    w = (G2.p - SVector{D}(cD)) + im * (G2.z * m)
+    return I0 * (y * transpose(w) + im * (SMatrix{D, D}(Zinv * G2.z) - I / 2))
 end
-# Computes the matrix (∫conj(G) Aᵢⱼ G)ᵢⱼ, which is real (= ‖G‖²(qpᵀ - a⁻¹b/2) where z = a + ib)
-moment_xD(G::GaussianWavePacket) = real(moment_xD(G, G))
+# Computes the matrix (∫conj(G) Aᵢⱼ G)ᵢⱼ, which is real (= ‖G‖²((q-cx)(p-cD)ᵀ - a⁻¹b/2) where z = a + ib)
+moment_xD(G::GaussianWavePacket{D},
+            cx::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber}),
+            cD::AbstractVector{<:RealOrNull}=zeros(SVector{D, NullNumber})) where D = real(moment_xD(G, G, cx, cD))
 
 """
     gaussian_hull(G)

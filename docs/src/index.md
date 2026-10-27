@@ -153,8 +153,8 @@ See the [API reference](api.md) for the documentation of each function.
 | `dot_L2`, `norm2_L2`, `norm_L2` | $L^2$ inner product and norm | ✓ | ✓ | ✓ |
 | `dot_∇`, `norm2_∇`, `norm_∇` (+ optional `c`) | $\dot H^1$ inner product and norm (`c`: magnetic shift, see above) | ✓ | | ✓ ¹ |
 | `dot_x`, `norm2_x`, `norm_x` (+ optional `c`) | $\int \lvert x-c\rvert^2\,\overline{G_1}G_2$ and the associated norm | ✓ | | ✓ ¹ |
-| `moment_x`, `moment_D` (+ optional `dims`) | $(\langle x_j G_1, G_2\rangle)_j$, $(\langle D_j G_1, G_2\rangle)_j$, and the real quadratic forms with one argument | ✓ | | ✓ ¹ |
-| `moment_xx`, `moment_xD` | $(\langle x_i x_j G_1, G_2\rangle)_{ij}$, $(\langle G_1, \tfrac12(x_iD_j + D_jx_i) G_2\rangle)_{ij}$, and the real quadratic forms with one argument | ✓ | | ✓ ¹ |
+| `moment_x`, `moment_D` (+ optional `c`) | $(\langle (x-c)_j G_1, G_2\rangle)_j$, $(\langle (D-c)_j G_1, G_2\rangle)_j$, and the real quadratic forms with one argument | ✓ | | ✓ ¹ |
+| `moment_xx`, `moment_xD` (+ optional `c`) | $(\langle x_i x_j G_1, G_2\rangle)_{ij}$, $(\langle G_1, \tfrac12(x_iD_j + D_jx_i) G_2\rangle)_{ij}$, and the real quadratic forms with one argument | ✓ | | ✓ ¹ |
 | `gaussian_hull` | Gaussian with the same first and second moments | ✓ | | ✓ ¹ |
 | `abs`, `abs2` | modulus and squared modulus (a `Gaussian`) | ✓ | | |
 | `coulomb_integral` | $\int G(x)/\lvert x\rvert\,dx$ for an isotropic 3D packet | ✓ | | |

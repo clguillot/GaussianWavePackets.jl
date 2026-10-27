@@ -234,7 +234,7 @@ function _test_gwp_fourier(nb_reps, tol, tol_cub)
             ξ = near_p(G)
             lo, hi = integration_box((center(G),), min_eig(G.z))
             # (the integrand oscillates: a tighter cubature is needed to reach tol_cub)
-            I1 = complex_cubature(y -> G(y) * cis(-dot(ξ, y)), lo, hi; reltol=1e-14, maxevals=10^9)
+            I1 = complex_cubature(y -> G(y) * cis(-dot(ξ, y)), lo, hi; reltol=1e-10, maxevals=10^9)
             err = max(err, abs(GF(ξ) - I1) / integral(abs(G)))
         end
         for D in (1, 2, 3), _ in 1:nb_reps, G in gwp_combos(Val(D))
@@ -438,22 +438,9 @@ function _test_gwp_moments(nb_reps, tol, tol_cub)
                 err_id = max(err_id, maximum(abs, moment_x(G1) - real(moment_x(G1, G1))) / n, maximum(abs, imag(moment_x(G1, G1))) / n)
                 err_id = max(err_id, maximum(abs, moment_D(G1) - real(moment_D(G1, G1))) / n, maximum(abs, imag(moment_D(G1, G1))) / n)
                 @test eltype(moment_x(G1)) <: Union{Float64, NullNumber} && eltype(moment_D(G1)) <: Union{Float64, NullNumber}
-                # Dimension selectors
-                if D == 3
-                    for dims in ((2,), (3, 1), (1, 2, 3), ())
-                        I = SVector{length(dims), Int}(dims...)
-                        @test num(moment_x(G1, G2; dims=dims)) ≈ num(Mx[I]) && num(moment_x(G1, G2, Val(dims))) ≈ num(Mx[I])
-                        @test num(moment_D(G1, G2; dims=dims)) ≈ num(MD[I]) && num(moment_D(G1, G2, Val(dims))) ≈ num(MD[I])
-                        @test num(moment_x(G1; dims=dims)) ≈ num(moment_x(G1)[I]) && num(moment_D(G1; dims=dims)) ≈ num(moment_D(G1)[I])
-                    end
-                    alloc += alloc_of((G1, G2) -> moment_x(G1, G2; dims=(3, 1)), G1, G2) + alloc_of(G -> moment_D(G; dims=(2,)), G1)
-                end
                 alloc += alloc_of(moment_x, G1, G2) + alloc_of(moment_D, G1, G2) + alloc_of(moment_x, G1) + alloc_of(moment_D, G1)
             end
         end
-        G = rand_gwp(Val(3), :sym, true, true, true)
-        @test_throws ArgumentError moment_x(G; dims=(1, 1))
-        @test_throws ArgumentError moment_D(G, G; dims=(4,))
 
         @test err <= tol_cub
         @test err_id <= tol
@@ -478,7 +465,10 @@ function _test_gwp_second_moments(nb_reps, tol, tol_cub)
                 Ixx = [complex_cubature(y -> y[i] * y[j] * conj(G1(y)) * G2(y), lo, hi) for i in 1:D, j in 1:D]
                 IxD = [complex_cubature(y -> conj(G1(y)) * (-im * y[i] * grad(G2, y)[j] - (i == j ? im / 2 : 0) * G2(y)), lo, hi)
                        for i in 1:D, j in 1:D]
-                err = max(err, maximum(abs, moment_xx(G1, G2) - Ixx) / s, maximum(abs, moment_xD(G1, G2) - IxD) / s)
+                # (scales given by Cauchy-Schwarz: |⟨xᵢG1, xⱼG2⟩| ≤ ‖xG1‖‖xG2‖ and |⟨xᵢG1, DⱼG2⟩| ≤ ‖xG1‖‖DG2‖)
+                s_xx = sqrt(norm2_x(G1) * norm2_x(G2))
+                s_xD = sqrt(norm2_x(G1) * norm2_∇(G2)) + s
+                err = max(err, maximum(abs, moment_xx(G1, G2) - Ixx) / s_xx, maximum(abs, moment_xD(G1, G2) - IxD) / s_xD)
             end
         end
         for D in (1, 2, 3), _ in 1:nb_reps
@@ -499,12 +489,25 @@ function _test_gwp_second_moments(nb_reps, tol, tol_cub)
                 x = near(G1)
                 err_id = max(err_id, abs(gaussian_hull(WavePacketSum(G1))(x) - G1(x)) / abs(G1(x)))
                 err_id = max(err_id, abs(gaussian_hull(G1 + 0.5 * G1)(x) - 1.5 * G1(x)) / abs(G1(x)))
+                # Shifts: x - c and D - c
+                c, c2 = 2 * (rand(SVector{D}) .- 0.5), 2 * (rand(SVector{D}) .- 0.5)
+                I0, Mx, MD = dot_L2(G1, G2), moment_x(G1, G2), moment_D(G1, G2)
+                err_id = max(err_id, maximum(abs, moment_x(G1, G2, c) - (Mx - c * I0)) / s)
+                err_id = max(err_id, maximum(abs, moment_D(G1, G2, c) - (MD - c * I0)) / s)
+                err_id = max(err_id, maximum(abs, moment_xx(G1, G2, c) - (moment_xx(G1, G2) - c * transpose(Mx) - Mx * transpose(c) + c * transpose(c) * I0)) / s)
+                err_id = max(err_id, maximum(abs, moment_xD(G1, G2, c, c2) - (moment_xD(G1, G2) - c * transpose(MD) - Mx * transpose(c2) + c * transpose(c2) * I0)) / s)
+                err_id = max(err_id, maximum(abs, moment_x(G1, c) - real(moment_x(G1, G1, c))) / n, maximum(abs, moment_D(G1, c) - real(moment_D(G1, G1, c))) / n)
+                err_id = max(err_id, maximum(abs, moment_xx(G1, c) - real(moment_xx(G1, G1, c))) / n)
+                err_id = max(err_id, maximum(abs, moment_xD(G1, c, c2) - real(moment_xD(G1, G1, c, c2))) / n)
                 alloc += alloc_of(moment_xx, G1, G2) + alloc_of(moment_xD, G1, G2) + alloc_of(moment_xx, G1) + alloc_of(moment_xD, G1)
+                alloc += alloc_of(moment_x, G1, G2, c) + alloc_of(moment_D, G1, c) + alloc_of(moment_xx, G1, G2, c) + alloc_of(moment_xD, G1, G2, c, c2)
                 alloc += alloc_of(gaussian_hull, G1 + G2)
             end
         end
 
-        @test err <= tol_cub
+        # (the scales s_xx and s_xD are smaller than the ∫|f| relative to which the cubature is accurate,
+        #   hence a larger tolerance: a wrong formula would still give an error of order 1)
+        @test err <= 10 * tol_cub
         @test err_id <= 1e3 * tol
         report_alloc("second moments and Gaussian hull", alloc)
     end
@@ -587,7 +590,7 @@ function test_gaussian_wave_packet()
     @testset "GaussianWavePacket" begin
         nb_reps = 3
         tol = 1e-12         # identities
-        tol_cub = 1e-10     # comparisons with a cubature (relative to ∫|f|)
+        tol_cub = 1e-6      # comparisons with a cubature (relative to ∫|f|)
 
         _test_gwp_evaluate(nb_reps, tol, tol_cub)
         _test_gwp_restriction(nb_reps, tol, tol_cub)

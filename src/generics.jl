@@ -248,54 +248,49 @@ Square root of [`norm2_x`](@ref).
 norm_x
 
 """
-    moment_x(G1, G2; dims)
-    moment_x(G; dims)
+    moment_x(G1, G2, c=0)
+    moment_x(G, c=0)
 
-Computes the vector `(∫dx xⱼ conj(G1(x)) G2(x))ⱼ` for `j` in `dims` (a tuple of distinct
-integers, all the dimensions by default), as an `SVector`.
-With a single argument, computes the associated quadratic form `(∫dx xⱼ |G(x)|²)ⱼ`, which is real.
-
-`dims` should be a constant for the result to be type-stable. When it is not known at compile
-time, `moment_x(G1, G2, Val(dims))` can be used instead.
+Computes the vector `(∫dx (x-c)ⱼ conj(G1(x)) G2(x))ⱼ`, as an `SVector` (`c` is a real vector,
+absent by default). With a single argument, computes the associated quadratic form
+`(∫dx (x-c)ⱼ |G(x)|²)ⱼ`, which is real.
 
 Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
 """
 function moment_x end
 
 """
-    moment_D(G1, G2; dims)
-    moment_D(G; dims)
+    moment_D(G1, G2, c=0)
+    moment_D(G, c=0)
 
-Computes the vector `(∫dx conj(DⱼG1(x)) G2(x))ⱼ` for `j` in `dims` (a tuple of distinct
-integers, all the dimensions by default), as an `SVector`, where `Dⱼ = -i∂ⱼ`.
-With a single argument, computes the associated quadratic form `(∫dx conj(DⱼG(x)) G(x))ⱼ`,
-which is real.
-
-`dims` should be a constant for the result to be type-stable. When it is not known at compile
-time, `moment_D(G1, G2, Val(dims))` can be used instead.
+Computes the vector `(∫dx conj((D-c)ⱼG1(x)) G2(x))ⱼ`, as an `SVector`, where `Dⱼ = -i∂ⱼ` (`c` is
+a real vector, absent by default). With a single argument, computes the associated quadratic
+form `(∫dx conj((D-c)ⱼG(x)) G(x))ⱼ`, which is real.
 
 Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
 """
 function moment_D end
 
 """
-    moment_xx(G1, G2)
-    moment_xx(G)
+    moment_xx(G1, G2, c=0)
+    moment_xx(G, c=0)
 
-Computes the matrix `(∫dx xᵢxⱼ conj(G1(x)) G2(x))ᵢⱼ`, as an `SMatrix`.
-With a single argument, computes the associated quadratic form `(∫dx xᵢxⱼ |G(x)|²)ᵢⱼ`, which is real.
+Computes the matrix `(∫dx (x-c)ᵢ(x-c)ⱼ conj(G1(x)) G2(x))ᵢⱼ`, as an `SMatrix` (`c` is a real
+vector, absent by default). With a single argument, computes the associated quadratic form
+`(∫dx (x-c)ᵢ(x-c)ⱼ |G(x)|²)ᵢⱼ`, which is real.
 
 Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
 """
 function moment_xx end
 
 """
-    moment_xD(G1, G2)
-    moment_xD(G)
+    moment_xD(G1, G2, cx=0, cD=0)
+    moment_xD(G, cx=0, cD=0)
 
 Computes the matrix `(∫dx conj(G1(x)) (AᵢⱼG2)(x))ᵢⱼ`, as an `SMatrix`, where
-`Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2 = xᵢDⱼ - iδᵢⱼ/2` is the symmetrized (self-adjoint) product of `xᵢ` and
-`Dⱼ = -i∂ⱼ`. With a single argument, computes the associated quadratic form, which is real.
+`Aᵢⱼ = (XᵢPⱼ + PⱼXᵢ)/2 = XᵢPⱼ - iδᵢⱼ/2` is the symmetrized (self-adjoint) product of
+`Xᵢ = (x-cx)ᵢ` and `Pⱼ = (D-cD)ⱼ`, with `Dⱼ = -i∂ⱼ` (`cx` and `cD` are real vectors, absent by
+default). With a single argument, computes the associated quadratic form, which is real.
 
 Defined for [`GaussianWavePacket`](@ref)s and for the sums of them.
 """

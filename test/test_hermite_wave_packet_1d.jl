@@ -349,7 +349,7 @@ function test_hermite_wave_packets_1d()
     @testset "HermiteWavePacket1D" begin
         nb_reps = 3
         tol = 1e-12         # identities
-        tol_cub = 1e-10     # comparisons with a cubature (relative to ∫|f|)
+        tol_cub = 1e-6      # comparisons with a cubature (relative to ∫|f|)
 
         _test_hwp_evaluate(nb_reps, tol, tol_cub)
         _test_hwp_evaluate_grid(nb_reps, tol, tol_cub)

@@ -1,8 +1,6 @@
 
 # Wrappers with constant dimension selectors (the result is type stable thanks to constant propagation)
 integral_dims2(G) = integral(G; dims=(2,))
-moment_x_dims2(G) = moment_x(G; dims=(2,))
-moment_D_dims31(G1, G2) = moment_D(G1, G2; dims=(3, 1))
 evaluate_dims31(G, x) = evaluate(G, x; dims=(3, 1))
 
 # The operations of a gaussian wave packet, with their arguments
@@ -16,10 +14,10 @@ function gwp_operations(G::GaussianWavePacket{D}) where D
               (norm2_L2, (G,)), (norm_L2, (G,)), (dot_∇, (G, G2)), (dot_∇, (G, G2, c)), (norm2_∇, (G,)),
               (norm2_∇, (G, c)), (unitary_product, (G, b, x, c)), (dot_x, (G, G2)), (dot_x, (G, G2, c)), (norm2_x, (G,)),
               (norm2_x, (G, c)), (moment_x, (G, G2)), (moment_x, (G,)), (moment_D, (G, G2)), (moment_D, (G,)),
-              (moment_xx, (G, G2)), (moment_xx, (G,)), (moment_xD, (G, G2)), (moment_xD, (G,)), (gaussian_hull, (G + G2,))]
+              (moment_xx, (G, G2)), (moment_xx, (G,)), (moment_xD, (G, G2)), (moment_xD, (G,)), (gaussian_hull, (G + G2,)),
+              (moment_x, (G, G2, c)), (moment_D, (G, c)), (moment_xx, (G, G2, c)), (moment_xD, (G, G2, c, x)), (moment_xD, (G, c, x))]
     D == 1 && push!(ops, (evaluate, (G, 0.3)))
-    D == 3 && push!(ops, (integral_dims2, (G,)), (evaluate_dims31, (G, SVector(0.1, 0.2))),
-                     (moment_x_dims2, (G,)), (moment_D_dims31, (G, G2)))
+    D == 3 && push!(ops, (integral_dims2, (G,)), (evaluate_dims31, (G, SVector(0.1, 0.2))))
     return ops
 end
 # The operations of a hermite wave packet, with their arguments

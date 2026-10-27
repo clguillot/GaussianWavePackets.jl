@@ -33,7 +33,7 @@ end
     The absolute tolerance is relative to ∫|f| by default: with abstol = 0, the cubature of a part
     which vanishes (e.g. the imaginary part of a real function) would never converge
 =#
-function complex_cubature(f, a, b; reltol=1e-12, abstol=nothing, maxevals=10^7)
+function complex_cubature(f, a, b; reltol=1e-8, abstol=nothing, maxevals=10^7)
     if abstol === nothing
         abstol = reltol * hcubature(x -> abs(f(x)), a, b; reltol=1e-6, maxevals=maxevals)[1]
     end

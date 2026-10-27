@@ -349,106 +349,77 @@ norm2_∇(G::WavePacketSum) = _norm2_terms(norm2_∇, dot_∇, G)
 norm2_∇(G::WavePacketSum, c::AbstractVector) = norm2_∇(_shift_p(G, c))
 
 #=
-    Callable objects which forward c (or dims) to dot_x, norm2_x, moment_x and moment_D.
-    They are used instead of closures, so that the recursive calls for nested sums are inferred
+    f with its last arguments fixed: _WithArgs(f, args)(G...) = f(G..., args...)
+    Used instead of closures, so that the recursive calls for nested sums are inferred
 =#
-struct _DotX{V}
-    c::V
+struct _WithArgs{F, A<:Tuple}
+    f::F
+    args::A
 end
-(f::_DotX)(G1, G2) = dot_x(G1, G2, f.c)
-struct _Norm2X{V}
-    c::V
-end
-(f::_Norm2X)(G) = norm2_x(G, f.c)
-struct _MomentX{dims} end
-_MomentX(::Val{dims}) where dims = _MomentX{dims}()
-(::_MomentX{dims})(G) where dims = moment_x(G, Val(dims))
-(::_MomentX{dims})(G1, G2) where dims = moment_x(G1, G2, Val(dims))
-struct _MomentD{dims} end
-_MomentD(::Val{dims}) where dims = _MomentD{dims}()
-(::_MomentD{dims})(G) where dims = moment_D(G, Val(dims))
-(::_MomentD{dims})(G1, G2) where dims = moment_D(G1, G2, Val(dims))
+(w::_WithArgs)(G...) = w.f(G..., w.args...)
+
+#=
+    Computes z + ∑ₖₗ f(G1[k], G2[l], args...) (at least one of G1, G2 being a sum), and the real
+    quadratic form z + ∑ₖ f(G[k], args...) + 2∑ₖ<ₗ Re(f(G[k], G[l], args...)), which is the quadratic
+    form of the operator A when f(G1, G2, args...) = ∫conj(G1)AG2 with A self-adjoint
+=#
+_bilinear_terms(f::F, z, G1, G2, args::Tuple) where F = _all_terms(_WithArgs(f, args), G1, G2, z)
+_quadratic_terms(f::F, z, G, args::Tuple) where F = _norm2_terms(_WithArgs(f, args), _WithArgs(f, args), G, z)
 
 #=
     Computes ∫<(x-c)G1,(x-c)G2> where at least one of the arguments is a sum
 =#
-dot_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
-dot_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
-dot_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_DotX(c), G1, G2)
+dot_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_WithArgs(dot_x, (c,)), G1, G2)
+dot_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_WithArgs(dot_x, (c,)), G1, G2)
+dot_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _all_terms(_WithArgs(dot_x, (c,)), G1, G2)
 
 #=
     Computes ∫|x-c|²|G|² for a sum
 =#
-norm2_x(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _norm2_terms(_Norm2X(c), _DotX(c), G)
+norm2_x(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _norm2_terms(_WithArgs(norm2_x, (c,)), _WithArgs(dot_x, (c,)), G)
 
-# A null vector of numbers of type T, with one entry for each dimension in dims
-_zero_moment(::Val{D}, v::Val, ::Type{T}) where{D, T} = zero(similar_type(_dims_index(Val(D), v), T))
-
-#=
-    Computes the vectors (∫xⱼ conj(G1)G2)ⱼ and (∫conj(DⱼG1)G2)ⱼ, where at least one of the arguments is a sum
-=#
-@inline Base.@constprop :aggressive function moment_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}; dims=nothing) where D
-    return moment_x(G1, G2, Val(dims))
-end
-@inline Base.@constprop :aggressive function moment_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}; dims=nothing) where D
-    return moment_x(G1, G2, Val(dims))
-end
-@inline Base.@constprop :aggressive function moment_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}; dims=nothing) where D
-    return moment_x(G1, G2, Val(dims))
-end
-moment_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
-moment_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
-moment_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, v::Val) where D = _moment_x_terms(G1, G2, v)
-_moment_x_terms(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}, v::Val) where D =
-    _all_terms(_MomentX(v), G1, G2, _zero_moment(Val(D), v, promote_type(core_type(G1), core_type(G2))))
-
-@inline Base.@constprop :aggressive function moment_D(G1::WavePacketSum{D}, G2::WavePacketSum{D}; dims=nothing) where D
-    return moment_D(G1, G2, Val(dims))
-end
-@inline Base.@constprop :aggressive function moment_D(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}; dims=nothing) where D
-    return moment_D(G1, G2, Val(dims))
-end
-@inline Base.@constprop :aggressive function moment_D(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}; dims=nothing) where D
-    return moment_D(G1, G2, Val(dims))
-end
-moment_D(G1::WavePacketSum{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
-moment_D(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
-moment_D(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, v::Val) where D = _moment_D_terms(G1, G2, v)
-_moment_D_terms(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}, v::Val) where D =
-    _all_terms(_MomentD(v), G1, G2, _zero_moment(Val(D), v, complex(promote_type(core_type(G1), core_type(G2)))))
+# The zeros of the vector (or matrix) moments of G1 and G2, and of the (real) quadratic forms of G
+_zero_vec(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D = zero(SVector{D, complex(promote_type(core_type(G1), core_type(G2)))})
+_zero_mat(G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where D = zero(SMatrix{D, D, complex(promote_type(core_type(G1), core_type(G2)))})
+_zero_vec(G::AbstractWavePacket{D}) where D = zero(SVector{D, real(core_type(G))})
+_zero_mat(G::AbstractWavePacket{D}) where D = zero(SMatrix{D, D, real(core_type(G))})
 
 #=
-    Computes the vectors (∫xⱼ|G|²)ⱼ and (∫conj(DⱼG)G)ⱼ for a sum
-    Since xⱼ and Dⱼ are self-adjoint, the cross terms are 2Re(∫xⱼ conj(G[k])G[l]) (and the same for Dⱼ)
+    Computes the vectors (∫(x-c)ⱼ conj(G1)G2)ⱼ and (∫conj((D-c)ⱼG1)G2)ⱼ, where at least one of the arguments is a sum
 =#
-@inline Base.@constprop :aggressive function moment_x(G::WavePacketSum; dims=nothing)
-    return moment_x(G, Val(dims))
-end
-@inline Base.@constprop :aggressive function moment_D(G::WavePacketSum; dims=nothing)
-    return moment_D(G, Val(dims))
-end
-moment_x(G::WavePacketSum{D}, v::Val) where D = _norm2_terms(_MomentX(v), _MomentX(v), G, _zero_moment(Val(D), v, real(core_type(G))))
-moment_D(G::WavePacketSum{D}, v::Val) where D = _norm2_terms(_MomentD(v), _MomentD(v), G, _zero_moment(Val(D), v, real(core_type(G))))
+moment_x(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_x, _zero_vec(G1, G2), G1, G2, (c,))
+moment_x(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_x, _zero_vec(G1, G2), G1, G2, (c,))
+moment_x(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_x, _zero_vec(G1, G2), G1, G2, (c,))
+moment_D(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_D, _zero_vec(G1, G2), G1, G2, (c,))
+moment_D(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_D, _zero_vec(G1, G2), G1, G2, (c,))
+moment_D(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_D, _zero_vec(G1, G2), G1, G2, (c,))
 
 #=
-    Computes the matrices (∫xᵢxⱼ conj(G1)G2)ᵢⱼ and (∫conj(G1) Aᵢⱼ G2)ᵢⱼ (Aᵢⱼ = (xᵢDⱼ + Dⱼxᵢ)/2),
-    where at least one of the arguments is a sum
+    Computes the real vectors (∫(x-c)ⱼ|G|²)ⱼ and (∫conj((D-c)ⱼG)G)ⱼ for a sum
+    (since (x-c)ⱼ and (D-c)ⱼ are self-adjoint, the cross terms are 2Re(...))
 =#
-moment_xx(G1::WavePacketSum{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
-moment_xx(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
-moment_xx(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}) where D = _moment_mat_terms(moment_xx, G1, G2)
-moment_xD(G1::WavePacketSum{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
-moment_xD(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
-moment_xD(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}) where D = _moment_mat_terms(moment_xD, G1, G2)
-_moment_mat_terms(f::F, G1::AbstractWavePacket{D}, G2::AbstractWavePacket{D}) where{F, D} =
-    _all_terms(f, G1, G2, zero(SMatrix{D, D, complex(promote_type(core_type(G1), core_type(G2)))}))
+moment_x(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _quadratic_terms(moment_x, _zero_vec(G), G, (c,))
+moment_D(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _quadratic_terms(moment_D, _zero_vec(G), G, (c,))
 
 #=
-    Computes the real matrices (∫xᵢxⱼ|G|²)ᵢⱼ and (∫conj(G) Aᵢⱼ G)ᵢⱼ for a sum
-    (since xᵢxⱼ and Aᵢⱼ are self-adjoint, the cross terms are 2Re(∫conj(G[k]) Aᵢⱼ G[l]))
+    Computes the matrices (∫(x-c)ᵢ(x-c)ⱼ conj(G1)G2)ᵢⱼ and (∫conj(G1) Aᵢⱼ G2)ᵢⱼ (Aᵢⱼ being the
+    symmetrized product of (x-cx)ᵢ and (D-cD)ⱼ), where at least one of the arguments is a sum
 =#
-moment_xx(G::WavePacketSum{D}) where D = _norm2_terms(moment_xx, moment_xx, G, zero(SMatrix{D, D, real(core_type(G))}))
-moment_xD(G::WavePacketSum{D}) where D = _norm2_terms(moment_xD, moment_xD, G, zero(SMatrix{D, D, real(core_type(G))}))
+moment_xx(G1::WavePacketSum{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_xx, _zero_mat(G1, G2), G1, G2, (c,))
+moment_xx(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_xx, _zero_mat(G1, G2), G1, G2, (c,))
+moment_xx(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _bilinear_terms(moment_xx, _zero_mat(G1, G2), G1, G2, (c,))
+moment_xD(G1::WavePacketSum{D}, G2::WavePacketSum{D}, cx::AbstractVector=zeros(SVector{D, NullNumber}), cD::AbstractVector=zeros(SVector{D, NullNumber})) where D =
+    _bilinear_terms(moment_xD, _zero_mat(G1, G2), G1, G2, (cx, cD))
+moment_xD(G1::AbstractWavePacket{D}, G2::WavePacketSum{D}, cx::AbstractVector=zeros(SVector{D, NullNumber}), cD::AbstractVector=zeros(SVector{D, NullNumber})) where D =
+    _bilinear_terms(moment_xD, _zero_mat(G1, G2), G1, G2, (cx, cD))
+moment_xD(G1::WavePacketSum{D}, G2::AbstractWavePacket{D}, cx::AbstractVector=zeros(SVector{D, NullNumber}), cD::AbstractVector=zeros(SVector{D, NullNumber})) where D =
+    _bilinear_terms(moment_xD, _zero_mat(G1, G2), G1, G2, (cx, cD))
+
+#=
+    Computes the real matrices (∫(x-c)ᵢ(x-c)ⱼ|G|²)ᵢⱼ and (∫conj(G) Aᵢⱼ G)ᵢⱼ for a sum
+=#
+moment_xx(G::WavePacketSum{D}, c::AbstractVector=zeros(SVector{D, NullNumber})) where D = _quadratic_terms(moment_xx, _zero_mat(G), G, (c,))
+moment_xD(G::WavePacketSum{D}, cx::AbstractVector=zeros(SVector{D, NullNumber}), cD::AbstractVector=zeros(SVector{D, NullNumber})) where D = _quadratic_terms(moment_xD, _zero_mat(G), G, (cx, cD))
 
 #=
     Gaussian hull of a sum f: the gaussian wave packet λ exp(-(x-q)ᵀz(x-q)/2) exp(ip⋅x) where
@@ -476,8 +447,9 @@ function gaussian_hull(G::WavePacketSum{D}) where D
     n = norm2_L2(G)
     q = moment_x(G) / n
     p = moment_D(G) / n
-    Σ = moment_xx(G) / n - q * transpose(q)
-    K = moment_xD(G) / n - q * transpose(p)
+    # (the moments are centered at q and p, which avoids the cancellations of Σ = ⟨xxᵀ⟩ - qqᵀ)
+    Σ = moment_xx(G, q) / n
+    K = moment_xD(G, q, p) / n
     a = inv(Σ) / 2
     b = -2 * (a * K)
     z = Symmetric(a + im * (b + transpose(b)) / 2)
